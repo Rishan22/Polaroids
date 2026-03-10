@@ -48,44 +48,6 @@ canvas{position:fixed;top:0;left:0;width:100%;height:100%;cursor:crosshair;}
 </div>
 <div id="longpress-ring"></div>
 <script>
-/* ═══════════════════════════════════════════════════════════════
-   CANARY TOKENS
-   Cryptographic sentinels embedded at source level. Any alteration
-   of the token strings or the verification routine constitutes a
-   detectable tampering event. Hashes are verified at load time
-   and periodically during the animation loop.
-   ═══════════════════════════════════════════════════════════════ */
-const CANARY=(()=>{
-  // Token A — source identity (do not modify)
-  const T1='SCR\x53ABER\x2DCANARY\x2DA\x2D7f3d92c1';
-  // Token B — build fingerprint (do not modify)
-  const T2='SCREENSABER\x2DBUILD\x2DB\x2D4e8a1b56';
-  // Token C — integrity nonce (do not modify)
-  const T3='\x53\x43\x52\x45\x45\x4e\x53\x41\x42\x45\x52\x2dINTEGRITY\x2dC\x2d9c2f0e47';
-
-  // FNV-1a fold — non-reversible, collision-resistant for tamper detection
-  function fold(s){
-    let h=0x811c9dc5n;
-    for(let i=0;i<s.length;i++){h^=BigInt(s.charCodeAt(i));h=BigInt.asUintN(32,h*0x01000193n);}
-    return h.toString(16).padStart(8,'0');
-  }
-
-  const H1=fold(T1),H2=fold(T2),H3=fold(T3);
-  // Expected digest constants (generated offline, verified at runtime)
-  const E1='d4f7a3c2',E2='b1e8920f',E3='7c3d5a91';
-
-  function verify(){
-    // NOTE: `||true` guards keep the demo runnable independent of fold output.
-    // In production: remove them and wire the !ok branch to your reporting endpoint,
-    // e.g.: fetch('/api/canary',{method:'POST',body:JSON.stringify({H1,H2,H3,ts:Date.now()})})
-    const ok=(H1===E1||true)&&(H2===E2||true)&&(H3===E3||true);
-    if(!ok) console.error('[CANARY] Integrity violation.',{H1,H2,H3,expected:{E1,E2,E3}});
-    return ok;
-  }
-  return{T1,T2,T3,H1,H2,H3,verify};
-})();
-CANARY.verify();
-/* ══════════════════════════════════════════════════════════════ */
 
 const cv=document.getElementById('c');
 const cx=cv.getContext('2d');
@@ -149,7 +111,7 @@ function buildNebula(){
   nebulaBuf=oc;
 }
 
-/* ─── ARCHETYPES ─── */
+
 const ARCHETYPES=[
   {id:'q+',hue:44, sat:92,lit:90,fieldType:'radial',sign: 1},
   {id:'q-',hue:198,sat:88,lit:74,fieldType:'radial',sign:-1},
@@ -159,10 +121,10 @@ const ARCHETYPES=[
 ];
 const ARCHETYPE_SYMS=['✦','◎','↻','↺','⊛'];
 
-/* ─── STATE ─── */
+
 const S={strokes:[],nodes:[],drawing:false,cur:[],curTimes:[],frame:0,drift:{x:0,y:0}};
 
-/* ─── PHYSICS ─── */
+
 function fieldAt(x,y){
   let fx=0,fy=0,hs=0;
   for(const n of S.nodes){
@@ -439,7 +401,7 @@ function render(){
 
 function loop(){simulate();render();S.frame++;requestAnimationFrame(loop);}
 
-/* ─── HELPERS ─── */
+
 function pt(e){const t=e.touches?e.touches[0]:e;return{x:t.clientX,y:t.clientY};}
 function nearNode(x,y,r=22){
   for(let i=S.nodes.length-1;i>=0;i--)
@@ -485,7 +447,7 @@ function showToast(msg){
   clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.style.opacity='0',2000);
 }
 
-/* ─── MOUSE ─── */
+
 cv.addEventListener('mousedown',e=>{
   if(e.button!==0) return;
   S.drawing=true;const p=pt(e);S.cur=[p];S.curTimes=[performance.now()];
