@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Screensaber</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;background:#02020a;overflow:hidden;}
+canvas{position:fixed;top:0;left:0;width:100%;height:100%;cursor:crosshair;}
+#hint{
+  position:fixed;bottom:28px;left:50%;
+  transform:translateX(-50%);
+  font-family:'Courier New',monospace;
+  font-size:9px;letter-spacing:.22em;
+  color:rgba(255,255,255,.09);
+  pointer-events:none;user-select:none;
+  transition:opacity 3s;white-space:nowrap;
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hint">DRAW TO PLACE MATTER · RIGHT-CLICK TO SEED A FORCE · CYCLE WITH RIGHT-CLICK · DOUBLE-CLICK TO REMOVE</div>
+<script>
+const cv = document.getElementById('c');
+const cx = cv.getContext('2d');
+let W, H;
+
+
+function resize(){
+  W = cv.width  = window.innerWidth;
+  H = cv.height = window.innerHeight;
+  buildStarfield();
+}
+window.addEventListener('resize', resize);
+
+let stars = [];
+function buildStarfield(){
+  stars = [];
+  const n = Math.floor(W * H / 3200);
+  for(let i=0;i<n;i++){
+    stars.push({
+      x: Math.random()*W,
+      y: Math.random()*H,
+      r: Math.random()<.92 ? Math.random()*.6+.1 : Math.random()*1.2+.6,
+      a: Math.random()*.35+.04,
+      flicker: Math.random()*Math.PI*2,
+      fspeed: Math.random()*.018+.004,
+    });
+  }
+}
+
+
+// Each has: label (internal), hue, glyph style, field type
+const ARCHETYPES = [
+  { id:'q+',  hue:42,   sat:90,  lit:88,  fieldType:'radial',  sign: 1  },  // positive charge — warm white/gold burst
+  { id:'q-',  hue:200,  sat:85,  lit:72,  fieldType:'radial',  sign:-1  },  // negative charge — cool blue inward
+  { id:'mn',  hue:4,    sat:95,  lit:65,  fieldType:'dipole',  sign: 1  },  // magnetic north — red
+  { id:'ms',  hue:220,  sat:80,  lit:60,  fieldType:'dipole',  sign:-1  },  // magnetic south — deep blue
+  { id:'il',  hue:145,  sat:70,  lit:60,  fieldType:'curl',    sign: 1  },  // current loop — green
+];
+
+
+const S = {
+  strokes: [],   // {pts:[{x,y,vx,vy,mass,hue}], restL, baseHue}
+  nodes:   [],   // {x,y,archIdx,str,phase}
+  drawing: false,
+  cur:     [],   // raw points during draw
+  curTimes:[],   // timestamps for speed calc
+  frame:   0,
+};
+
+
+function fieldAt(x, y){
+  let fx=0, fy=0, hueShift=0;
+  for(const n of S.nodes){
+    const A = ARCHETYPES[n.archIdx];
+    const dx=n.x-x, dy=n.y-y;
+    const r = Math.sqrt(dx*dx+dy*dy)+0.5;
+    const inv = n.str / (r+12);
+    if(A.fieldType==='radial'){
+      fx += dx*inv*A.sign;
+      fy += dy*inv*A.sign;
+      hueShift += A.hue * inv * A.sign * 0.4;
+    } else if(A.fieldType==='dipole'){
+  
+      const r3 = r*r*r+0.001;
+      fx += (3*dx*dy)/(r3*r*r)*inv*12*A.sign;
+      fy += (3*dy*dy - r*r)/(r3*r*r)*inv*12*A.sign;
+      hueShift += A.hue * inv * 0.5;
+    } else if(A.fieldType==='curl'){
+      fx += -dy*inv*A.sign;
+      fy +=  dx*inv*A.sign;
+      hueShift += A.hue * inv * 0.6;
+    }
+  }
+  return {x:fx, y:fy, hueShift};
+}
+
+
+function simulate(){
+  const dt = 0.48;
+
+  for(const s of S.strokes){
+    const n = s.pts.length;
+    for(const p of s.pts){
+      const f = fieldAt(p.x, p.y);
+      
+      const resp = 1/(p.mass+0.3);
+      p.vx = p.vx*0.78 + f.x*dt*resp;
+      p.vy = p.vy*0.78 + f.y*dt*resp;
+      p.x += p.vx;
+      p.y += p.vy;
+      
+      p.hue += (f.hueShift - p.hue)*0.008;
+      
+      if(p.x<0){p.x=0;p.vx*=-.2;}
+      if(p.x>W){p.x=W;p.vx*=-.2;}
+      if(p.y<0){p.y=0;p.vy*=-.2;}
+      if(p.y>H){p.y=H;p.vy*=-.2;}
+    }
+   
+    const restSeg = s.restL/(n-1);
+    for(let i=0;i<n-1;i++){
+      const a=s.pts[i], b=s.pts[i+1];
+      const dx=b.x-a.x, dy=b.y-a.y;
+      const d=Math.hypot(dx,dy)+.001;
+      const k=(d-restSeg)/d * 0.14;
+     
+      const wa = 1/(a.mass+.1), wb = 1/(b.mass+.1);
+      const tot = wa+wb;
+      a.x+=dx*k*(wa/tot); a.y+=dy*k*(wa/tot);
+      b.x-=dx*k*(wb/tot); b.y-=dy*k*(wb/tot);
+    }
+  }
+}
+
+/* DRAW  */
+function drawFieldLines(){
+  if(S.nodes.length===0) return;
+  const seedN = 12;
+  for(const n of S.nodes){
+    const A = ARCHETYPES[n.archIdx];
+    for(let s=0;s<seedN;s++){
+      const angle = (s/seedN)*Math.PI*2;
+      let x=n.x+Math.cos(angle)*18, y=n.y+Math.sin(angle)*18;
+      cx.beginPath(); cx.moveTo(x,y);
+      let prevX=x,prevY=y;
+      for(let step=0;step<80;step++){
+        const f=fieldAt(x,y);
+        const m=Math.hypot(f.x,f.y);
+        if(m<0.002) break;
+        x+=f.x/m*5; y+=f.y/m*5;
+        if(x<0||x>W||y<0||y>H) break;
+        cx.lineTo(x,y);
+      }
+      const dist = Math.hypot(x-prevX,y-prevY);
+      const alpha = Math.min(0.06, 0.015 + dist/300*0.04);
+      cx.strokeStyle=`hsla(${A.hue},${A.sat}%,${A.lit}%,${alpha})`;
+      cx.lineWidth=0.5;
+      cx.stroke();
+    }
+  }
+}
+
+
+function drawNodes(){
+  for(const n of S.nodes){
+    const A  = ARCHETYPES[n.archIdx];
+    const ph = S.frame*0.036 + n.x*.008;
+    const pulse = 0.5+0.5*Math.sin(ph);
+    const col = `hsl(${A.hue},${A.sat}%,${A.lit}%)`;
+    const colA = (a)=>`hsla(${A.hue},${A.sat}%,${A.lit}%,${a})`;
+
+    // halo
+    const g = cx.createRadialGradient(n.x,n.y,0,n.x,n.y,28+pulse*8);
+    g.addColorStop(0, colA(0.07+pulse*.04));
+    g.addColorStop(1, colA(0));
+    cx.beginPath(); cx.arc(n.x,n.y,28+pulse*8,0,Math.PI*2);
+    cx.fillStyle=g; cx.fill();
+
+    cx.save(); cx.translate(n.x,n.y);
+    cx.strokeStyle=col; cx.fillStyle=col; cx.lineWidth=1;
+
+    if(A.id==='q+'){
+      // radiant burst — lines outward
+      for(let i=0;i<8;i++){
+        const a=i/8*Math.PI*2;
+        const r1=5, r2=9+pulse*3;
+        cx.beginPath();
+        cx.moveTo(Math.cos(a)*r1,Math.sin(a)*r1);
+        cx.lineTo(Math.cos(a)*r2,Math.sin(a)*r2);
+        cx.globalAlpha=0.8; cx.stroke(); cx.globalAlpha=1;
+      }
+      cx.beginPath(); cx.arc(0,0,3.5,0,Math.PI*2);
+      cx.fillStyle=colA(0.9); cx.fill();
+    } else if(A.id==='q-'){
+      // inward cross / asterisk
+      for(let i=0;i<6;i++){
+        const a=i/6*Math.PI*2;
+        const r=8+pulse*2;
+        cx.beginPath();
+        cx.moveTo(Math.cos(a)*r,Math.sin(a)*r);
+        cx.lineTo(0,0);
+        cx.globalAlpha=0.6; cx.stroke(); cx.globalAlpha=1;
+      }
+      cx.beginPath(); cx.arc(0,0,2.5,0,Math.PI*2);
+      cx.strokeStyle=colA(0.9); cx.stroke();
+    } else if(A.id==='mn'){
+      // clockwise spiral arms
+      cx.rotate(S.frame*0.013);
+      for(let arm=0;arm<3;arm++){
+        cx.rotate(Math.PI*2/3);
+        cx.beginPath();
+        for(let t=0;t<1;t+=0.05){
+          const r=3+t*7, a=t*Math.PI*1.2;
+          const px=Math.cos(a)*r, py=Math.sin(a)*r;
+          t===0?cx.moveTo(px,py):cx.lineTo(px,py);
+        }
+        cx.globalAlpha=0.7; cx.stroke(); cx.globalAlpha=1;
+      }
+    } else if(A.id==='ms'){
+      // counter-clockwise
+      cx.rotate(-S.frame*0.013);
+      for(let arm=0;arm<3;arm++){
+        cx.rotate(Math.PI*2/3);
+        cx.beginPath();
+        for(let t=0;t<1;t+=0.05){
+          const r=3+t*7, a=-(t*Math.PI*1.2);
+          const px=Math.cos(a)*r, py=Math.sin(a)*r;
+          t===0?cx.moveTo(px,py):cx.lineTo(px,py);
+        }
+        cx.globalAlpha=0.7; cx.stroke(); cx.globalAlpha=1;
+      }
+    } else {
+      // current loop — concentric ovals + rotating tick
+      cx.beginPath(); cx.ellipse(0,0,9,5,0,0,Math.PI*2); cx.stroke();
+      cx.beginPath(); cx.ellipse(0,0,6,3,0,0,Math.PI*2);
+      cx.globalAlpha=0.4; cx.stroke(); cx.globalAlpha=1;
+      // rotating tick = current direction
+      cx.rotate(S.frame*0.022);
+      cx.beginPath(); cx.moveTo(0,-9); cx.lineTo(-2.5,-5); cx.lineTo(2.5,-5); cx.closePath();
+      cx.fillStyle=colA(0.8); cx.fill();
+    }
+
+    cx.restore();
+  }
+}
+
+function drawStrokes(){
+  for(const s of S.strokes){
+    const pts=s.pts;
+    if(pts.length<2) continue;
+    const restSeg = s.restL/(pts.length-1);
+
+    for(let i=1;i<pts.length;i++){
+      const a=pts[i-1], b=pts[i];
+      const dx=b.x-a.x, dy=b.y-a.y;
+      const d=Math.hypot(dx,dy)+.001;
+      const stretch=(d-restSeg)/(restSeg+.001);
+
+      // width from mass — heavy = wide
+      const mass=(a.mass+b.mass)*0.5;
+      const w=0.4+mass*2.8;
+
+      // hue from field interaction, lightness from stretch
+      const hue=(a.hue+b.hue)*0.5;
+      const stretchL=Math.max(20,Math.min(90, 55+stretch*35));
+      const saturation=40+mass*20;
+
+      // ribbon normal
+      const nx=-dy/d*w, ny=dx/d*w;
+      cx.beginPath();
+      cx.moveTo(a.x+nx,a.y+ny);
+      cx.lineTo(b.x+nx,b.y+ny);
+      cx.lineTo(b.x-nx,b.y-ny);
+      cx.lineTo(a.x-nx,a.y-ny);
+      cx.closePath();
+
+      // core fill
+      const alpha=0.55+mass*0.3;
+      cx.fillStyle=`hsla(${hue},${saturation}%,${stretchL}%,${alpha})`;
+      cx.fill();
+
+      // bright edge on heavy masses
+      if(mass>0.5){
+        cx.strokeStyle=`hsla(${hue},${saturation+20}%,${stretchL+20}%,${alpha*0.4})`;
+        cx.lineWidth=0.5;
+        cx.stroke();
+      }
+    }
+  }
+}
+
+
+function drawStars(){
+  for(const s of stars){
+    const a=s.a*(0.6+0.4*Math.sin(S.frame*s.fspeed+s.flicker));
+    cx.beginPath(); cx.arc(s.x,s.y,s.r,0,Math.PI*2);
+    cx.fillStyle=`rgba(200,210,240,${a})`; cx.fill();
+  }
+}
+
+function drawLive(){
+  if(S.cur.length<2) return;
+  cx.lineWidth=0.8;
+  cx.strokeStyle='rgba(180,190,220,0.3)';
+  cx.setLineDash([2,7]);
+  cx.beginPath();
+  cx.moveTo(S.cur[0].x,S.cur[0].y);
+  for(const p of S.cur) cx.lineTo(p.x,p.y);
+  cx.stroke();
+  cx.setLineDash([]);
+}
+
+function render(){
+  // deep space fade
+  cx.fillStyle='rgba(2,2,10,0.15)';
+  cx.fillRect(0,0,W,H);
+
+  drawStars();
+  drawFieldLines();
+  drawStrokes();
+  drawLive();
+  drawNodes();
+}
+
+function loop(){
+  simulate();
+  render();
+  S.frame++;
+  requestAnimationFrame(loop);
+}
+
+
+function pt(e){ const t=e.touches?e.touches[0]:e; return {x:t.clientX,y:t.clientY}; }
+function nearNode(x,y,r=20){
+  for(let i=S.nodes.length-1;i>=0;i--)
+    if(Math.hypot(S.nodes[i].x-x,S.nodes[i].y-y)<r) return i;
+  return -1;
+}
+
+function subsample(pts,times,maxPts=100){
+  if(pts.length<=maxPts) return pts.map((p,i)=>({...p,vx:0,vy:0}));
+  const out=[], step=(pts.length-1)/(maxPts-1);
+  for(let i=0;i<maxPts;i++){
+    const idx=Math.round(i*step);
+    out.push({...pts[idx],vx:0,vy:0});
+  }
+  return out;
+}
+
+function commitStroke(){
+  if(S.cur.length>3){
+    // compute per-point mass from speed (slow=heavy)
+    const subPts = subsample(S.cur, S.curTimes, 100);
+    // map original speeds to subsampled
+    const speeds=[];
+    for(let i=1;i<S.cur.length;i++){
+      const dt=S.curTimes[i]-S.curTimes[i-1]+1;
+      const d=Math.hypot(S.cur[i].x-S.cur[i-1].x,S.cur[i].y-S.cur[i-1].y);
+      speeds.push(d/dt);
+    }
+    speeds.unshift(speeds[0]||0);
+    const maxSpd=Math.max(...speeds,0.01);
+
+    // assign mass inversely to speed
+    const pts=subPts.map((p,i)=>{
+      const origIdx=Math.round(i*(S.cur.length-1)/(subPts.length-1));
+      const spd=speeds[Math.min(origIdx,speeds.length-1)];
+      const norm=spd/maxSpd; // 0=slow=heavy, 1=fast=light
+      const mass=1-norm*0.85;  // 0.15..1.0
+      // initial hue from nearest node or neutral
+      const f=fieldAt(p.x,p.y);
+      const hue=((f.hueShift%360)+360)%360 || 200;
+      return {...p,mass,hue,vx:0,vy:0};
+    });
+
+    let L=0;
+    for(let i=1;i<pts.length;i++) L+=Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y);
+    S.strokes.push({pts,restL:L});
+  }
+  S.cur=[]; S.curTimes=[]; S.drawing=false;
+}
+
+cv.addEventListener('mousedown',e=>{
+  if(e.button!==0) return;
+  S.drawing=true;
+  const p=pt(e);
+  S.cur=[p]; S.curTimes=[performance.now()];
+  document.getElementById('hint').style.opacity='0';
+});
+cv.addEventListener('mousemove',e=>{
+  if(!S.drawing) return;
+  const p=pt(e), l=S.cur[S.cur.length-1];
+  if(Math.hypot(p.x-l.x,p.y-l.y)>4){ S.cur.push(p); S.curTimes.push(performance.now()); }
+});
+cv.addEventListener('mouseup',   e=>{ if(e.button===0) commitStroke(); });
+cv.addEventListener('mouseleave',  ()=>{ if(S.drawing) commitStroke(); });
+
+cv.addEventListener('contextmenu',e=>{
+  e.preventDefault();
+  const p=pt(e), idx=nearNode(p.x,p.y);
+  if(idx>=0){
+    S.nodes[idx].archIdx=(S.nodes[idx].archIdx+1)%ARCHETYPES.length;
+  } else {
+    S.nodes.push({x:p.x,y:p.y,archIdx:0,str:140,phase:Math.random()*Math.PI*2});
+  }
+});
+
+cv.addEventListener('dblclick',e=>{
+  const p=pt(e), idx=nearNode(p.x,p.y,24);
+  if(idx>=0) S.nodes.splice(idx,1);
+  else S.strokes=[];
+});
+
+
+cv.addEventListener('touchstart',e=>{e.preventDefault();S.drawing=true;const p=pt(e);S.cur=[p];S.curTimes=[performance.now()];},{passive:false});
+cv.addEventListener('touchmove',e=>{e.preventDefault();if(!S.drawing)return;const p=pt(e),l=S.cur[S.cur.length-1];if(Math.hypot(p.x-l.x,p.y-l.y)>4){S.cur.push(p);S.curTimes.push(performance.now());}},{passive:false});
+cv.addEventListener('touchend',e=>{e.preventDefault();commitStroke();},{passive:false});
+
+window.addEventListener('keydown',e=>{
+  if(e.key===' ')                         S.strokes=[];
+  if(e.key==='Backspace'||e.key==='Delete') S.nodes=[];
+  if(e.key==='Escape')                    {S.strokes=[];S.nodes=[];}
+});
+
+
+resize();
+loop();
+</script>
+</body>
+</html>
