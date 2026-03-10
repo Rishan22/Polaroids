@@ -54,8 +54,8 @@ canvas{position:fixed;top:0;left:0;width:100%;height:100%;}
 <body>
 <canvas id="c"></canvas>
 <div id="node-bar">
-  <div class="n-btn active" id="nb-field" onclick="setNode('field')">⬡ FIELD</div>
-  <div class="n-btn" id="nb-hole" onclick="setNode('hole')">◉ HOLE</div>
+  <div class="n-btn active" id="nb-field" onclick="setNode('field')">⬡ </div>
+  <div class="n-btn" id="nb-hole" onclick="setNode('hole')">◉ </div>
 </div>
 <div id="export-bar">
   <div class="e-btn" onclick="exportPNG()">PNG</div>
@@ -66,7 +66,7 @@ canvas{position:fixed;top:0;left:0;width:100%;height:100%;}
 <script>
 const cv = document.getElementById('c');
 const cx = cv.getContext('2d');
-// Offscreen trail buffer — strokes paint here, composited onto main canvas with decay
+
 const trail = document.createElement('canvas');
 const tx = trail.getContext('2d');
 let W, H;
@@ -78,9 +78,7 @@ function resize() {
 }
 window.addEventListener('resize', resize);
 
-/* ── SMOOTH NOISE ───────────────────────────────────
-   Gradient-based value noise, no periodicity artifacts
-   ─────────────────────────────────────────────────── */
+
 const PERM = new Uint8Array(512);
 (function(){
   const p = new Uint8Array(256);
@@ -131,12 +129,6 @@ const S={
   frame:0, nodeType:'field',
 };
 
-/* ── EM FIELD ─────────────────────────────────────────
-   Force law: 1/r² (Coulomb/gravitational) with soft core
-   to prevent singularities. Softening radius ~8px (64px²).
-   Field node: tangential (magnetic curl) + slight radial repulsion
-   Hole:       pure gravitational sink, 1/r² inward
-   ─────────────────────────────────────────────────────── */
 const SOFT2=64;
 function fieldAt(x,y){
   let fx=0,fy=0;
@@ -145,14 +137,12 @@ function fieldAt(x,y){
     const r2=dx*dx+dy*dy+SOFT2;
     const r=Math.sqrt(r2);
     if(n.type==='field'){
-      // Tangential (Lorentz-like) force organises matter into orbital paths
-      // Small radial repulsion prevents complete collapse to node
+    
       const inv=n.str/r2;
       fx+=(-dy/r)*inv*1.1+(dx/r)*inv*.08;
       fy+=( dx/r)*inv*1.1+(dy/r)*inv*.08;
     } else {
-      // Pure 1/r² gravitational infall — no artificial discontinuity
-      // dx = point - node so inward pull = negative direction
+    
       const inv=n.str/r2;
       fx-=(dx/r)*inv; fy-=(dy/r)*inv;
     }
@@ -165,7 +155,7 @@ function holeDist(x,y){
   return d;
 }
 
-/* ── STROKE ANALYSIS ────────────────────────────────── */
+/* ── STROKE ────────────────────────────────── */
 function analyseStroke(pts, avgSpd){
   const n=pts.length;
   const speedE=Math.min(1,avgSpd/18);
@@ -211,9 +201,7 @@ function simulate(){
     const mob=1/Math.max(1,s.mass);
     for(const p of s.pts){
       const f=fieldAt(p.x,p.y);
-      // Drag coefficient 0.97 — near-vacuum, minimal resistive medium.
-      // High enough to prevent runaway acceleration, low enough to let
-      // matter orbit for many cycles before decaying.
+
       p.vx=p.vx*.97+f.x*mob*.18;
       p.vy=p.vy*.97+f.y*mob*.18;
       p.x+=p.vx; p.y+=p.vy;
@@ -222,20 +210,14 @@ function simulate(){
 
       const hd=holeDist(p.x,p.y);
 
-      // Accretion heating: tidal compression near hole raises temperature.
-      // Rate proportional to 1/r (tidal force scales as 1/r³, but we use
-      // a gentler proxy to keep the visual interesting at all scales).
+   
       if(hd<120) p.temp=Math.min(1,p.temp+.004*(1-hd/120));
 
-      // Radiative cooling: matter not near a heat source cools toward its
-      // base temperature. Stefan-Boltzmann says power ∝ T⁴ but we use a
-      // linear approximation scaled to match the heating rate.
       const cooling=.0004*(1+p.temp*p.temp);
       p.temp=Math.max(p.baseTemp||0,p.temp-cooling);
 
       if(S.frame%6===0){
-        // Inductive / collisional heating from nearby hot matter.
-        // No artificial cap — dense hot regions can fully ionize neighbours.
+     
         let induced=0;
         for(const s2 of S.strokes){
           if(s2===s) continue;
@@ -248,10 +230,9 @@ function simulate(){
         if(induced>0) p.temp=Math.min(1,p.temp+induced*.04);
       }
 
-      // Accretion jet ejection: biased tangential to the hole (bipolar jet),
-      // not isotropic. Real accretion disks eject matter along rotation axis.
+   
       if(hd<90&&p.temp>.4&&Math.random()<.0007*s.mass){
-        // tangent to orbit = perpendicular to radial direction toward nearest hole
+      
         let jx=0,jy=0;
         for(const n of S.nodes){
           if(n.type!=='hole') continue;
@@ -260,8 +241,8 @@ function simulate(){
           jx+=-dy/r; jy+=dx/r; // tangential
         }
         const jlen=Math.hypot(jx,jy)+.001;
-        const sign=Math.random()<.5?1:-1; // bipolar
-        const scatter=(Math.random()-.5)*.8; // some spread
+        const sign=Math.random()<.5?1:-1; 
+        const scatter=(Math.random()-.5)*.8; 
         S.particles.push({
           x:p.x,y:p.y,
           vx:(jx/jlen*sign+scatter)*2.8+p.vx*.15,
@@ -286,16 +267,16 @@ function simulate(){
   for(let i=S.particles.length-1;i>=0;i--){
     const p=S.particles[i];
     const f=fieldAt(p.x,p.y);
-    // Lighter drag for free particles — ejected at high velocity, minimal medium
+    
     p.vx=p.vx*.98+f.x*.25; p.vy=p.vy*.98+f.y*.25;
     p.x+=p.vx; p.y+=p.vy;
-    // Radiative cooling as particle expands away from heat source
+   
     p.temp=Math.max(0,p.temp-.006);
     p.life-=p.decay;
     if(p.life<=0||p.x<-120||p.x>W+120||p.y<-120||p.y>H+120) S.particles.splice(i,1);
   }
 
-  // discharge arcs between hot regions
+ 
   S.discharges=[];
   if(S.frame%4===0){
     const hotPts=[];
@@ -354,20 +335,14 @@ function tempRGB(t, rs=0){
   return[r,g,b];
 }
 
-/* ── STROKE RENDERING ───────────────────────────────────────────────────────
-   Single continuous path rendered in multiple passes:
-   Pass 1 (cold–warm): wide soft glow pass  — gives volume
-   Pass 2:             narrow spine pass    — gives definition
-   Pass 3 (hot):       tight bright core    — plasma luminance
-   Edge displacement via per-vertex noise so no shape is geometric
-   ─────────────────────────────────────────────────────────────────────────── */
+
 function renderStroke(s){
   const pts=s.pts;
   if(pts.length<2) return;
   const restSeg=s.restL/(pts.length-1);
   const time=S.frame*.012;
 
-  // Build displaced spine: each point offset by noise normal to path
+ 
   function displaced(pts, scale, timeOffset){
     const out=[];
     for(let i=0;i<pts.length;i++){
@@ -384,14 +359,11 @@ function renderStroke(s){
     return out;
   }
 
-  // Pass 1: volumetric glow — build a quadratic bezier path with wide gradient stroke
-  // Rendered as series of radial gradients along the centreline, sized by temperature
-  // This replaces the "circle per point" look — we use the segment as a linear gradient
   {
     for(let i=1;i<pts.length;i++){
       const a=pts[i-1], b=pts[i];
       const avgT=(a.temp+b.temp)*.5;
-      // cold = very narrow, warm = medium spread, hot = tight bright
+     
       const spread= avgT<.25 ? 0 :
                     avgT<.55 ? (avgT-.25)/.3*(s.mass*4+6) :
                                s.mass*2+3;
@@ -400,7 +372,7 @@ function renderStroke(s){
       const rs=Math.max(0,1-Math.min(holeDist(a.x,a.y),holeDist(b.x,b.y))/175);
       const[r,g,bl]=tempRGB(avgT,rs);
 
-      // gradient along segment normal gives soft cloud body
+   
       const dx=b.x-a.x, dy=b.y-a.y, d=Math.hypot(dx,dy)+.001;
       const nx=-dy/d, ny=dx/d;
       const grd=tx.createLinearGradient(
@@ -424,15 +396,13 @@ function renderStroke(s){
     }
   }
 
-  // Pass 2: continuous ribbon — single closed path along both sides
-  // Width tapers with stretch so matter threads into a filament near holes
+
   {
     const noiseScale= s.speedE<.4 ? 5+s.mass*2.5 : 1.5+s.mass*1.2;
     const disp=displaced(pts, noiseScale, time*.3+s.restL*.001);
     const n=disp.length;
     if(n<2) return;
 
-    // Precompute per-vertex: tangent, normal, half-width, colour
     const verts=[];
     for(let i=0;i<n;i++){
       const prev=disp[Math.max(0,i-1)], next=disp[Math.min(n-1,i+1)];
@@ -444,7 +414,7 @@ function renderStroke(s){
       const avgT=p.temp;
       const hd=holeDist(p.x,p.y);
       const stretch=i>0?(Math.hypot(disp[i].x-disp[i-1].x,disp[i].y-disp[i-1].y)-restSeg)/(restSeg+.001):0;
-      // taper width to near-zero when heavily stretched (threading into hole)
+    
       const stretchTaper=Math.max(0,1-Math.abs(stretch)*1.2);
       const baseHW= avgT<.25 ? s.mass*.9+.9 :
                     avgT<.55 ? s.mass*.5+.5  :
@@ -458,16 +428,13 @@ function renderStroke(s){
       verts.push({x:disp[i].x,y:disp[i].y,nx,ny,hw,r,g,b,al:Math.min(.92,al)});
     }
 
-    // Group into colour-similar runs so we draw as few paths as possible
-    // but still get smooth joins — draw entire ribbon as one filled path
-    // upper edge forward, lower edge backward
-    // For colour variation along the ribbon, split into short runs
+   
     const RUN=12;
     for(let start=0;start<n-1;start+=RUN){
       const end=Math.min(n-1,start+RUN);
       if(end<=start) continue;
 
-      // pick representative colour for this run
+    
       const mid=verts[Math.floor((start+end)/2)];
       const{r,g,b,al}=mid;
 
@@ -506,7 +473,7 @@ function renderStroke(s){
     }
   }
 
-  // Pass 3: hot core glow
+ 
   {
     for(let i=1;i<pts.length;i++){
       const a=pts[i-1], b=pts[i];
@@ -529,12 +496,11 @@ function renderStroke(s){
 
 /* ── DRAW ───────────────────────────────────────────── */
 function draw(){
-  // ── Main canvas: just space + composited trail ──
-  // Clear to deep space each frame — no flat rectangle artifact
+
   cx.fillStyle='#00000a';
   cx.fillRect(0,0,W,H);
 
-  // Stars directly on main canvas — they don't need trails
+
   for(const s of stars){
     s.tw+=s.ts;
     cx.beginPath(); cx.arc(s.x,s.y,s.r,0,Math.PI*2);
@@ -542,7 +508,7 @@ function draw(){
     cx.fill();
   }
 
-  // ── Trail canvas: decay previous frame then paint current geometry ──
+ 
   // Decay: multiply alpha of existing content toward black.
   // destination-in compositing shrinks alpha uniformly — no visible rectangle.
   tx.globalCompositeOperation='destination-in';
@@ -553,7 +519,7 @@ function draw(){
   // Paint all geometry onto trail buffer this frame
   for(const s of S.strokes) renderStroke(s);
 
-  // discharges — onto trail buffer
+  // discharge — onto trail buffer
   for(const d of S.discharges){
     const[r,g,b]=tempRGB(.82+d.strength*.18);
     tx.shadowBlur=8+d.strength*7; tx.shadowColor=`rgba(${r},${g},${b},.4)`;
@@ -738,7 +704,7 @@ function stopRecord(){
   clearInterval(recTimer);
 }
 
-/* ── BOOT ───────────────────────────────────────────── */
+/* ── START ───────────────────────────────────────────── */
 resize(); loop();
 </script>
 </body>
