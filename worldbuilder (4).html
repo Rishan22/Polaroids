@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>World Builder</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;background:#000;overflow:hidden;}
+canvas{position:fixed;top:0;left:0;width:100%;height:100%;}
+#node-bar{
+  position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+  display:flex;gap:6px;
+  background:rgba(0,0,2,.55);
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:30px;padding:6px 14px;
+  backdrop-filter:blur(10px);
+}
+.n-btn{
+  font-family:'Courier New',monospace;font-size:9px;letter-spacing:.14em;
+  color:rgba(255,255,255,.28);background:transparent;
+  border:1px solid transparent;
+  padding:5px 12px;border-radius:20px;cursor:pointer;transition:all .18s;
+}
+.n-btn.active{color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.2);}
+#export-bar{
+  position:fixed;bottom:20px;right:20px;
+  display:flex;gap:6px;
+}
+.e-btn{
+  font-family:'Courier New',monospace;font-size:9px;letter-spacing:.14em;
+  color:rgba(255,255,255,.28);background:rgba(0,0,2,.5);
+  border:1px solid rgba(255,255,255,.07);
+  padding:6px 13px;border-radius:20px;cursor:pointer;transition:all .2s;
+  backdrop-filter:blur(6px);
+}
+.e-btn:hover{color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.22);}
+.e-btn.rec{color:rgba(255,75,75,.8);border-color:rgba(255,75,75,.28);}
+#rec-ind{
+  position:fixed;top:18px;right:18px;
+  font-family:'Courier New',monospace;font-size:9px;letter-spacing:.14em;
+  color:rgba(255,75,75,.8);display:none;align-items:center;gap:6px;
+}
+#rec-dot{width:5px;height:5px;border-radius:50%;background:rgba(255,75,75,.9);animation:blink .8s infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
+#hint{
+  position:fixed;top:18px;left:50%;transform:translateX(-50%);
+  font-family:'Courier New',monospace;font-size:9px;letter-spacing:.18em;
+  color:rgba(255,255,255,.09);pointer-events:none;user-select:none;
+  transition:opacity 3s;white-space:nowrap;
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="node-bar">
+  <div class="n-btn active" id="nb-field" onclick="setNode('field')">⬡ FIELD</div>
+  <div class="n-btn" id="nb-hole" onclick="setNode('hole')">◉ HOLE</div>
+</div>
+<div id="export-bar">
+  <div class="e-btn" onclick="exportPNG()">PNG</div>
+  <div class="e-btn" id="rec-btn" onclick="toggleRecord()">REC</div>
+</div>
+<div id="rec-ind"><div id="rec-dot"></div><span id="rec-lbl">REC 0.0s</span></div>
+<div id="hint">DRAW  ·  RIGHT-CLICK NODE  ·  DOUBLE-CLICK REMOVE</div>
+<script>
+const cv = document.getElementById('c');
+const cx = cv.getContext('2d');
+// Offscreen trail buffer — strokes paint here, composited onto main canvas with decay
+const trail = document.createElement('canvas');
+const tx = trail.getContext('2d');
+let W, H;
+
+function resize() {
+  W = cv.width = trail.width = innerWidth;
+  H = cv.height = trail.height = innerHeight;
+  seedStars();
+}
+window.addEventListener('resize', resize);
+
+/* ── SMOOTH NOISE ───────────────────────────────────
+   Gradient-based value noise, no periodicity artifacts
+   ─────────────────────────────────────────────────── */
+const PERM = new Uint8Array(512);
+(function(){
+  const p = new Uint8Array(256);
+  for(let i=0;i<256;i++) p[i]=i;
+  for(let i=255;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [p[i],p[j]]=[p[j],p[i]]; }
+  for(let i=0;i<512;i++) PERM[i]=p[i&255];
+})();
+function fade(t){ return t*t*t*(t*(t*6-15)+10); }
+function lerp(a,b,t){ return a+(b-a)*t; }
+function grad(h,x,y){
+  const v=h&3;
+  const u=v<2?x:y, w=v<2?y:x;
+  return ((h&1)?-u:u)+((h&2)?-w:w);
+}
+function noise2(x,y){
+  const X=Math.floor(x)&255, Y=Math.floor(y)&255;
+  const xf=x-Math.floor(x), yf=y-Math.floor(y);
+  const u=fade(xf), v=fade(yf);
+  const a=PERM[X]+Y, b=PERM[X+1]+Y;
+  return lerp(
+    lerp(grad(PERM[a],xf,yf),   grad(PERM[b],xf-1,yf),  u),
+    lerp(grad(PERM[a+1],xf,yf-1),grad(PERM[b+1],xf-1,yf-1),u),v
+  );
+}
+function fbm(x,y,oct=4){
+  let v=0,amp=.5,freq=1,max=0;
+  for(let i=0;i<oct;i++){v+=noise2(x*freq,y*freq)*amp;max+=amp;amp*=.5;freq*=2.1;}
+  return v/max;
+}
+
+/* ── STARS ──────────────────────────────────────────── */
+let stars=[];
+function seedStars(){
+  stars=[];
+  const n=Math.floor(W*H/2800);
+  for(let i=0;i<n;i++) stars.push({
+    x:Math.random()*W, y:Math.random()*H,
+    r:Math.random()<.92?Math.random()*.65+.15:Math.random()*1.6+.8,
+    a:Math.random()*.4+.07,
+    tw:Math.random()*Math.PI*2, ts:Math.random()*.007+.002,
+  });
+}
+
+/* ── STATE ──────────────────────────────────────────── */
+const S={
+  strokes:[], nodes:[], particles:[], discharges:[],
+  drawing:false, current:[], lastPos:null, lastTime:0,
+  frame:0, nodeType:'field',
+};
+
+/* ── EM FIELD ─────────────────────────────────────────
+   Force law: 1/r² (Coulomb/gravitational) with soft core
+   to prevent singularities. Softening radius ~8px (64px²).
+   Field node: tangential (magnetic curl) + slight radial repulsion
+   Hole:       pure gravitational sink, 1/r² inward
+   ─────────────────────────────────────────────────────── */
+const SOFT2=64;
+function fieldAt(x,y){
+  let fx=0,fy=0;
+  for(const n of S.nodes){
+    const dx=x-n.x, dy=y-n.y;
+    const r2=dx*dx+dy*dy+SOFT2;
+    const r=Math.sqrt(r2);
+    if(n.type==='field'){
+      // Tangential (Lorentz-like) force organises matter into orbital paths
+      // Small radial repulsion prevents complete collapse to node
+      const inv=n.str/r2;
+      fx+=(-dy/r)*inv*1.1+(dx/r)*inv*.08;
+      fy+=( dx/r)*inv*1.1+(dy/r)*inv*.08;
+    } else {
+      // Pure 1/r² gravitational infall — no artificial discontinuity
+      // dx = point - node so inward pull = negative direction
+      const inv=n.str/r2;
+      fx-=(dx/r)*inv; fy-=(dy/r)*inv;
+    }
+  }
+  return{x:fx,y:fy};
+}
+function holeDist(x,y){
+  let d=Infinity;
+  for(const n of S.nodes) if(n.type==='hole') d=Math.min(d,Math.hypot(x-n.x,y-n.y));
+  return d;
+}
+
+/* ── STROKE ANALYSIS ────────────────────────────────── */
+function analyseStroke(pts, avgSpd){
+  const n=pts.length;
+  const speedE=Math.min(1,avgSpd/18);
+
+  let totalCurv=0;
+  for(let i=1;i<n-1;i++){
+    const dx1=pts[i].x-pts[i-1].x, dy1=pts[i].y-pts[i-1].y;
+    const dx2=pts[i+1].x-pts[i].x, dy2=pts[i+1].y-pts[i].y;
+    const cross=Math.abs(dx1*dy2-dy1*dx2);
+    const denom=(Math.hypot(dx1,dy1)*Math.hypot(dx2,dy2))+.001;
+    totalCurv+=cross/denom;
+  }
+  const meanCurv=n>2?Math.min(1,totalCurv/(n-2)*4):0;
+
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  for(const p of pts){
+    if(p.x<minX)minX=p.x; if(p.x>maxX)maxX=p.x;
+    if(p.y<minY)minY=p.y; if(p.y>maxY)maxY=p.y;
+  }
+  const bbox=(maxX-minX)*(maxY-minY)+1;
+  const pathLen=pts.reduce((a,p,i)=>i===0?0:a+Math.hypot(p.x-pts[i-1].x,p.y-pts[i-1].y),0);
+  const densityE=Math.min(1,pathLen/(Math.sqrt(bbox)+1)*.04);
+
+  // per-point noise seed for edge displacement
+  for(let i=0;i<n;i++){
+    const dx1=i>0?pts[i].x-pts[i-1].x:0, dy1=i>0?pts[i].y-pts[i-1].y:0;
+    const dx2=i<n-1?pts[i+1].x-pts[i].x:dx1, dy2=i<n-1?pts[i+1].y-pts[i].y:dy1;
+    const localCurv=i>0&&i<n-1?Math.min(1,Math.abs(dx1*dy2-dy1*dx2)/((Math.hypot(dx1,dy1)*Math.hypot(dx2,dy2))+.001)*4):meanCurv;
+    const t0=Math.min(1, speedE*.35+localCurv*.3+densityE*.35);
+    pts[i].temp=t0;
+    pts[i].baseTemp=t0; // radiative cooling floor
+    pts[i].ns=Math.random()*1000;
+    pts[i].vx=0; pts[i].vy=0;
+  }
+
+  const mass=Math.max(.5,Math.min(5,4-speedE*3+densityE*2));
+  return{pts,restL:pathLen,mass,speedE,densityE,meanCurv};
+}
+
+/* ── SIMULATE ───────────────────────────────────────── */
+function simulate(){
+  for(const s of S.strokes){
+    const mob=1/Math.max(1,s.mass);
+    for(const p of s.pts){
+      const f=fieldAt(p.x,p.y);
+      // Drag coefficient 0.97 — near-vacuum, minimal resistive medium.
+      // High enough to prevent runaway acceleration, low enough to let
+      // matter orbit for many cycles before decaying.
+      p.vx=p.vx*.97+f.x*mob*.18;
+      p.vy=p.vy*.97+f.y*mob*.18;
+      p.x+=p.vx; p.y+=p.vy;
+      if(p.x<-60)p.x=W+60; if(p.x>W+60)p.x=-60;
+      if(p.y<-60)p.y=H+60; if(p.y>H+60)p.y=-60;
+
+      const hd=holeDist(p.x,p.y);
+
+      // Accretion heating: tidal compression near hole raises temperature.
+      // Rate proportional to 1/r (tidal force scales as 1/r³, but we use
+      // a gentler proxy to keep the visual interesting at all scales).
+      if(hd<120) p.temp=Math.min(1,p.temp+.004*(1-hd/120));
+
+      // Radiative cooling: matter not near a heat source cools toward its
+      // base temperature. Stefan-Boltzmann says power ∝ T⁴ but we use a
+      // linear approximation scaled to match the heating rate.
+      const cooling=.0004*(1+p.temp*p.temp);
+      p.temp=Math.max(p.baseTemp||0,p.temp-cooling);
+
+      if(S.frame%6===0){
+        // Inductive / collisional heating from nearby hot matter.
+        // No artificial cap — dense hot regions can fully ionize neighbours.
+        let induced=0;
+        for(const s2 of S.strokes){
+          if(s2===s) continue;
+          for(let j=0;j<s2.pts.length;j+=5){
+            const q=s2.pts[j];
+            const d=Math.hypot(p.x-q.x,p.y-q.y);
+            if(d<55) induced+=q.temp*(1-d/55)*.15;
+          }
+        }
+        if(induced>0) p.temp=Math.min(1,p.temp+induced*.04);
+      }
+
+      // Accretion jet ejection: biased tangential to the hole (bipolar jet),
+      // not isotropic. Real accretion disks eject matter along rotation axis.
+      if(hd<90&&p.temp>.4&&Math.random()<.0007*s.mass){
+        // tangent to orbit = perpendicular to radial direction toward nearest hole
+        let jx=0,jy=0;
+        for(const n of S.nodes){
+          if(n.type!=='hole') continue;
+          const dx=p.x-n.x,dy=p.y-n.y;
+          const r=Math.hypot(dx,dy)+.001;
+          jx+=-dy/r; jy+=dx/r; // tangential
+        }
+        const jlen=Math.hypot(jx,jy)+.001;
+        const sign=Math.random()<.5?1:-1; // bipolar
+        const scatter=(Math.random()-.5)*.8; // some spread
+        S.particles.push({
+          x:p.x,y:p.y,
+          vx:(jx/jlen*sign+scatter)*2.8+p.vx*.15,
+          vy:(jy/jlen*sign+scatter)*2.8+p.vy*.15,
+          life:1,decay:Math.random()*.025+.012,
+          temp:p.temp,mass:s.mass*.25
+        });
+      }
+    }
+
+    const restSeg=s.restL/(s.pts.length-1);
+    const k=.12+s.mass*.04;
+    for(let i=0;i<s.pts.length-1;i++){
+      const a=s.pts[i],b=s.pts[i+1];
+      const dx=b.x-a.x,dy=b.y-a.y;
+      const d=Math.hypot(dx,dy)+.001;
+      const e=(d-restSeg)/d*k;
+      a.x+=dx*e;a.y+=dy*e;b.x-=dx*e;b.y-=dy*e;
+    }
+  }
+
+  for(let i=S.particles.length-1;i>=0;i--){
+    const p=S.particles[i];
+    const f=fieldAt(p.x,p.y);
+    // Lighter drag for free particles — ejected at high velocity, minimal medium
+    p.vx=p.vx*.98+f.x*.25; p.vy=p.vy*.98+f.y*.25;
+    p.x+=p.vx; p.y+=p.vy;
+    // Radiative cooling as particle expands away from heat source
+    p.temp=Math.max(0,p.temp-.006);
+    p.life-=p.decay;
+    if(p.life<=0||p.x<-120||p.x>W+120||p.y<-120||p.y>H+120) S.particles.splice(i,1);
+  }
+
+  // discharge arcs between hot regions
+  S.discharges=[];
+  if(S.frame%4===0){
+    const hotPts=[];
+    for(const s of S.strokes){
+      const mid=s.pts[Math.floor(s.pts.length/2)];
+      if(mid&&mid.temp>.65) hotPts.push({x:mid.x,y:mid.y,temp:mid.temp});
+    }
+    for(let i=0;i<hotPts.length;i++){
+      for(let j=i+1;j<hotPts.length;j++){
+        const pa=hotPts[i],pb=hotPts[j];
+        const d=Math.hypot(pa.x-pb.x,pa.y-pb.y);
+        const thresh=80+pa.temp*120+pb.temp*120;
+        if(d<thresh){
+          const segs=8+Math.floor(Math.random()*5);
+          const arc=[{x:pa.x,y:pa.y}];
+          for(let k=1;k<segs;k++){
+            const t=k/segs;
+            arc.push({
+              x:pa.x+(pb.x-pa.x)*t+(Math.random()-.5)*d*.24,
+              y:pa.y+(pb.y-pa.y)*t+(Math.random()-.5)*d*.24,
+            });
+          }
+          arc.push({x:pb.x,y:pb.y});
+          S.discharges.push({arc,strength:(pa.temp+pb.temp)*.5*(1-d/thresh)});
+        }
+      }
+    }
+  }
+}
+
+/* ── TEMPERATURE → COLOUR ───────────────────────────── */
+function tempRGB(t, rs=0){
+  let r,g,b;
+  if(t<.22){
+    // cold: deep blue-charcoal → slate blue
+    const s=t/.22;
+    r=Math.round(18+s*38);  g=Math.round(22+s*48);  b=Math.round(42+s*80);
+  } else if(t<.45){
+    // warming: slate blue → cold grey-white
+    const s=(t-.22)/.23;
+    r=Math.round(56+s*148); g=Math.round(70+s*148); b=Math.round(122+s*98);
+  } else if(t<.68){
+    // ionizing: grey-white → amber-orange
+    const s=(t-.45)/.23;
+    r=Math.round(204+s*46); g=Math.round(218-s*82);  b=Math.round(220-s*185);
+  } else if(t<.88){
+    // plasma: orange → cyan-white
+    const s=(t-.68)/.2;
+    r=Math.round(250-s*120); g=Math.round(136+s*100); b=Math.round(35+s*195);
+  } else {
+    // discharge: cyan-white → pure white
+    const s=(t-.88)/.12;
+    r=Math.round(130+s*125); g=Math.round(236+s*19);  b=Math.round(230+s*25);
+  }
+  if(rs>0){ r=Math.min(255,r+Math.round(rs*120)); g=Math.max(0,g-Math.round(rs*80)); b=Math.max(0,b-Math.round(rs*120)); }
+  return[r,g,b];
+}
+
+/* ── STROKE RENDERING ───────────────────────────────────────────────────────
+   Single continuous path rendered in multiple passes:
+   Pass 1 (cold–warm): wide soft glow pass  — gives volume
+   Pass 2:             narrow spine pass    — gives definition
+   Pass 3 (hot):       tight bright core    — plasma luminance
+   Edge displacement via per-vertex noise so no shape is geometric
+   ─────────────────────────────────────────────────────────────────────────── */
+function renderStroke(s){
+  const pts=s.pts;
+  if(pts.length<2) return;
+  const restSeg=s.restL/(pts.length-1);
+  const time=S.frame*.012;
+
+  // Build displaced spine: each point offset by noise normal to path
+  function displaced(pts, scale, timeOffset){
+    const out=[];
+    for(let i=0;i<pts.length;i++){
+      const p=pts[i];
+      // tangent
+      const prev=pts[Math.max(0,i-1)], next=pts[Math.min(pts.length-1,i+1)];
+      const tx=next.x-prev.x, ty=next.y-prev.y;
+      const tlen=Math.hypot(tx,ty)+.001;
+      const nx=-ty/tlen, ny=tx/tlen; // normal
+      // noise along path coordinate
+      const nv=fbm(p.x*.006+timeOffset,p.y*.006+timeOffset)*scale;
+      out.push({x:p.x+nx*nv, y:p.y+ny*nv, temp:p.temp});
+    }
+    return out;
+  }
+
+  // Pass 1: volumetric glow — build a quadratic bezier path with wide gradient stroke
+  // Rendered as series of radial gradients along the centreline, sized by temperature
+  // This replaces the "circle per point" look — we use the segment as a linear gradient
+  {
+    for(let i=1;i<pts.length;i++){
+      const a=pts[i-1], b=pts[i];
+      const avgT=(a.temp+b.temp)*.5;
+      // cold = very narrow, warm = medium spread, hot = tight bright
+      const spread= avgT<.25 ? 0 :
+                    avgT<.55 ? (avgT-.25)/.3*(s.mass*4+6) :
+                               s.mass*2+3;
+      if(spread<.5) continue;
+
+      const rs=Math.max(0,1-Math.min(holeDist(a.x,a.y),holeDist(b.x,b.y))/175);
+      const[r,g,bl]=tempRGB(avgT,rs);
+
+      // gradient along segment normal gives soft cloud body
+      const dx=b.x-a.x, dy=b.y-a.y, d=Math.hypot(dx,dy)+.001;
+      const nx=-dy/d, ny=dx/d;
+      const grd=tx.createLinearGradient(
+        a.x+nx*spread, a.y+ny*spread,
+        a.x-nx*spread, a.y-ny*spread
+      );
+      const al= avgT<.35 ? .18+avgT*.3 : .12+avgT*.18;
+      grd.addColorStop(0,  `rgba(${r},${g},${bl},0)`);
+      grd.addColorStop(.35,`rgba(${r},${g},${bl},${al})`);
+      grd.addColorStop(.65,`rgba(${r},${g},${bl},${al})`);
+      grd.addColorStop(1,  `rgba(${r},${g},${bl},0)`);
+
+      tx.beginPath();
+      tx.moveTo(a.x+nx*spread, a.y+ny*spread);
+      tx.lineTo(b.x+nx*spread, b.y+ny*spread);
+      tx.lineTo(b.x-nx*spread, b.y-ny*spread);
+      tx.lineTo(a.x-nx*spread, a.y-ny*spread);
+      tx.closePath();
+      tx.fillStyle=grd;
+      tx.fill();
+    }
+  }
+
+  // Pass 2: continuous ribbon — single closed path along both sides
+  // Width tapers with stretch so matter threads into a filament near holes
+  {
+    const noiseScale= s.speedE<.4 ? 5+s.mass*2.5 : 1.5+s.mass*1.2;
+    const disp=displaced(pts, noiseScale, time*.3+s.restL*.001);
+    const n=disp.length;
+    if(n<2) return;
+
+    // Precompute per-vertex: tangent, normal, half-width, colour
+    const verts=[];
+    for(let i=0;i<n;i++){
+      const prev=disp[Math.max(0,i-1)], next=disp[Math.min(n-1,i+1)];
+      const tx=next.x-prev.x, ty=next.y-prev.y;
+      const tlen=Math.hypot(tx,ty)+.001;
+      const nx=-ty/tlen, ny=tx/tlen;
+
+      const p=pts[i];
+      const avgT=p.temp;
+      const hd=holeDist(p.x,p.y);
+      const stretch=i>0?(Math.hypot(disp[i].x-disp[i-1].x,disp[i].y-disp[i-1].y)-restSeg)/(restSeg+.001):0;
+      // taper width to near-zero when heavily stretched (threading into hole)
+      const stretchTaper=Math.max(0,1-Math.abs(stretch)*1.2);
+      const baseHW= avgT<.25 ? s.mass*.9+.9 :
+                    avgT<.55 ? s.mass*.5+.5  :
+                               s.mass*.25+.3;
+      const hw=baseHW*stretchTaper;
+
+      const rs=Math.max(0,1-hd/175);
+      const[r,g,b]=tempRGB(avgT,rs);
+      const al= avgT<.25 ? .78 : avgT<.55 ? .5+avgT*.18 : .38+avgT*.34;
+
+      verts.push({x:disp[i].x,y:disp[i].y,nx,ny,hw,r,g,b,al:Math.min(.92,al)});
+    }
+
+    // Group into colour-similar runs so we draw as few paths as possible
+    // but still get smooth joins — draw entire ribbon as one filled path
+    // upper edge forward, lower edge backward
+    // For colour variation along the ribbon, split into short runs
+    const RUN=12;
+    for(let start=0;start<n-1;start+=RUN){
+      const end=Math.min(n-1,start+RUN);
+      if(end<=start) continue;
+
+      // pick representative colour for this run
+      const mid=verts[Math.floor((start+end)/2)];
+      const{r,g,b,al}=mid;
+
+      tx.beginPath();
+      // upper side: start → end
+      tx.moveTo(verts[start].x+verts[start].nx*verts[start].hw,
+                verts[start].y+verts[start].ny*verts[start].hw);
+      for(let i=start+1;i<=end;i++){
+        const v=verts[i], pv=verts[i-1];
+        // smooth cubic bezier between vertices
+        const cpx=(pv.x+v.x)/2, cpy=(pv.y+v.y)/2;
+        tx.quadraticCurveTo(
+          pv.x+pv.nx*pv.hw, pv.y+pv.ny*pv.hw,
+          cpx+v.nx*v.hw,    cpy+v.ny*v.hw
+        );
+      }
+      // round cap at end
+      const ev=verts[end];
+      tx.arcTo(ev.x+ev.nx*ev.hw, ev.y+ev.ny*ev.hw,
+               ev.x-ev.nx*ev.hw, ev.y-ev.ny*ev.hw, ev.hw);
+      // lower side: end → start
+      for(let i=end;i>=start;i--){
+        const v=verts[i], nv=verts[Math.max(start,i-1)];
+        tx.quadraticCurveTo(
+          v.x-v.nx*v.hw,    v.y-v.ny*v.hw,
+          (v.x+nv.x)/2-nv.nx*nv.hw, (v.y+nv.y)/2-nv.ny*nv.hw
+        );
+      }
+      // round cap at start
+      const sv=verts[start];
+      tx.arcTo(sv.x-sv.nx*sv.hw, sv.y-sv.ny*sv.hw,
+               sv.x+sv.nx*sv.hw, sv.y+sv.ny*sv.hw, sv.hw);
+      tx.closePath();
+      tx.fillStyle=`rgba(${r},${g},${b},${al})`;
+      tx.fill();
+    }
+  }
+
+  // Pass 3: hot core glow
+  {
+    for(let i=1;i<pts.length;i++){
+      const a=pts[i-1], b=pts[i];
+      const avgT=(a.temp+b.temp)*.5;
+      if(avgT<.65) continue;
+
+      const rs=Math.max(0,1-Math.min(holeDist(a.x,a.y),holeDist(b.x,b.y))/175);
+      const[r,g,bl]=tempRGB(avgT,rs);
+      const hot=(avgT-.65)/.35;
+
+      tx.shadowBlur=6+hot*12;
+      tx.shadowColor=`rgba(${r},${g},${bl},.4)`;
+      tx.lineWidth=.5+hot*.6;
+      tx.strokeStyle=`rgba(255,255,255,${hot*.35})`;
+      tx.beginPath();tx.moveTo(a.x,a.y);tx.lineTo(b.x,b.y);tx.stroke();
+      tx.shadowBlur=0;
+    }
+  }
+}
+
+/* ── DRAW ───────────────────────────────────────────── */
+function draw(){
+  // ── Main canvas: just space + composited trail ──
+  // Clear to deep space each frame — no flat rectangle artifact
+  cx.fillStyle='#00000a';
+  cx.fillRect(0,0,W,H);
+
+  // Stars directly on main canvas — they don't need trails
+  for(const s of stars){
+    s.tw+=s.ts;
+    cx.beginPath(); cx.arc(s.x,s.y,s.r,0,Math.PI*2);
+    cx.fillStyle=`rgba(255,255,255,${s.a*(.7+.3*Math.sin(s.tw))})`;
+    cx.fill();
+  }
+
+  // ── Trail canvas: decay previous frame then paint current geometry ──
+  // Decay: multiply alpha of existing content toward black.
+  // destination-in compositing shrinks alpha uniformly — no visible rectangle.
+  tx.globalCompositeOperation='destination-in';
+  tx.fillStyle='rgba(0,0,0,0.82)';
+  tx.fillRect(0,0,W,H);
+  tx.globalCompositeOperation='source-over';
+
+  // Paint all geometry onto trail buffer this frame
+  for(const s of S.strokes) renderStroke(s);
+
+  // discharges — onto trail buffer
+  for(const d of S.discharges){
+    const[r,g,b]=tempRGB(.82+d.strength*.18);
+    tx.shadowBlur=8+d.strength*7; tx.shadowColor=`rgba(${r},${g},${b},.4)`;
+    tx.lineWidth=.6+d.strength*.7;
+    tx.strokeStyle=`rgba(${r},${g},${b},${.25+d.strength*.5})`;
+    tx.beginPath(); tx.moveTo(d.arc[0].x,d.arc[0].y);
+    for(let i=1;i<d.arc.length;i++) tx.lineTo(d.arc[i].x,d.arc[i].y);
+    tx.stroke(); tx.shadowBlur=0;
+  }
+
+  // particles — onto trail buffer so they fade naturally
+  for(const p of S.particles){
+    const rs=Math.max(0,1-holeDist(p.x,p.y)/100);
+    const[r,g,b]=tempRGB(p.temp,rs);
+    const spd=Math.hypot(p.vx,p.vy)+.001;
+    const smear=Math.min(spd*2,8);
+    tx.lineCap='round';
+    tx.lineWidth=.8+p.mass*.3;
+    tx.strokeStyle=`rgba(${r},${g},${b},${p.life*.55})`;
+    tx.beginPath();
+    tx.moveTo(p.x-p.vx/spd*smear, p.y-p.vy/spd*smear);
+    tx.lineTo(p.x,p.y);
+    tx.stroke();
+    tx.lineCap='butt';
+  }
+
+  // Composite trail onto main canvas with additive-friendly blend
+  cx.drawImage(trail, 0, 0);
+
+  // Live ghost on main canvas — no trail needed
+  if(S.current.length>1){
+    cx.lineWidth=.7; cx.strokeStyle='rgba(200,215,255,.15)';
+    cx.setLineDash([2,10]);
+    cx.beginPath(); cx.moveTo(S.current[0].x,S.current[0].y);
+    for(const p of S.current) cx.lineTo(p.x,p.y);
+    cx.stroke(); cx.setLineDash([]);
+  }
+
+  // Nodes on main canvas — crisp, no trail
+  for(const n of S.nodes) renderNode(n);
+}
+
+function renderNode(n){
+  const ph=S.frame*.034+n.x*.007;
+  const pulse=.5+.5*Math.sin(ph);
+  cx.save(); cx.translate(n.x,n.y);
+  if(n.type==='field'){
+    for(let ring=0;ring<3;ring++){
+      const rad=12+ring*11+pulse*4;
+      const al=(.1-ring*.03)+pulse*.04;
+      cx.beginPath();
+      for(let v=0;v<6;v++){
+        const a=(v/6)*Math.PI*2+S.frame*.008*(ring%2===0?1:-1);
+        v===0?cx.moveTo(Math.cos(a)*rad,Math.sin(a)*rad):cx.lineTo(Math.cos(a)*rad,Math.sin(a)*rad);
+      }
+      cx.closePath(); cx.strokeStyle=`rgba(125,195,255,${al})`; cx.lineWidth=.8; cx.stroke();
+    }
+    cx.shadowBlur=14; cx.shadowColor='rgba(115,190,255,.5)';
+    cx.beginPath(); cx.arc(0,0,3.5,0,Math.PI*2);
+    cx.fillStyle='rgba(178,228,255,.95)'; cx.fill(); cx.shadowBlur=0;
+  } else {
+    for(let ring=0;ring<4;ring++){
+      const rad=9+ring*9+pulse*2;
+      const al=(.16-ring*.03)*(.55+pulse*.4);
+      cx.beginPath(); cx.arc(0,0,rad,0,Math.PI*2);
+      cx.strokeStyle=`rgba(${215-ring*22},${38-ring*7},0,${al})`;
+      cx.lineWidth=ring===0?2:.8; cx.stroke();
+    }
+    cx.beginPath(); cx.arc(0,0,6,0,Math.PI*2); cx.fillStyle='#000'; cx.fill();
+    cx.shadowBlur=11; cx.shadowColor=`rgba(255,55,0,${.38+pulse*.3})`;
+    cx.beginPath(); cx.arc(0,0,6,0,Math.PI*2);
+    cx.strokeStyle=`rgba(255,58,0,${.48+pulse*.3})`; cx.lineWidth=1.5; cx.stroke();
+    cx.shadowBlur=0;
+  }
+  cx.restore();
+}
+
+/* ── LOOP ───────────────────────────────────────────── */
+function loop(){ simulate(); draw(); S.frame++; captureFrame(); requestAnimationFrame(loop); }
+
+/* ── INPUT ──────────────────────────────────────────── */
+function pt(e){ const t=e.touches?e.touches[0]:e; return{x:t.clientX,y:t.clientY}; }
+function nearNode(x,y,r=22){ for(let i=S.nodes.length-1;i>=0;i--) if(Math.hypot(S.nodes[i].x-x,S.nodes[i].y-y)<r) return i; return -1; }
+
+function sub(pts,max){
+  if(pts.length<=max) return pts;
+  const out=[],step=(pts.length-1)/(max-1);
+  for(let i=0;i<max;i++){const p=pts[Math.round(i*step)];out.push({...p});}
+  return out;
+}
+
+function commit(){
+  if(S.current.length>3){
+    const spds=S.current.map(p=>p.spd||3);
+    const avgSpd=spds.reduce((a,b)=>a+b,0)/spds.length;
+    S.strokes.push(analyseStroke(sub(S.current,130),avgSpd));
+  }
+  S.current=[]; S.drawing=false; S.lastPos=null;
+}
+
+cv.addEventListener('mousedown',e=>{
+  if(e.button!==0) return;
+  S.drawing=true; const p=pt(e);
+  S.current=[{...p,spd:0}];
+  S.lastPos=p; S.lastTime=performance.now();
+  document.getElementById('hint').style.opacity='0';
+});
+cv.addEventListener('mousemove',e=>{
+  if(!S.drawing) return;
+  const p=pt(e),now=performance.now();
+  const spd=S.lastPos?Math.hypot(p.x-S.lastPos.x,p.y-S.lastPos.y)/(now-S.lastTime+1)*16:3;
+  const l=S.current[S.current.length-1];
+  if(Math.hypot(p.x-l.x,p.y-l.y)>4) S.current.push({...p,spd});
+  S.lastPos=p; S.lastTime=now;
+});
+cv.addEventListener('mouseup',e=>{ if(e.button===0) commit(); });
+cv.addEventListener('mouseleave',()=>{ if(S.drawing) commit(); });
+
+cv.addEventListener('contextmenu',e=>{
+  e.preventDefault(); const p=pt(e);
+  const idx=nearNode(p.x,p.y);
+  if(idx>=0) S.nodes[idx].type=S.nodes[idx].type==='field'?'hole':'field';
+  else S.nodes.push({x:p.x,y:p.y,type:S.nodeType,str:155});
+});
+cv.addEventListener('dblclick',e=>{
+  const p=pt(e); const idx=nearNode(p.x,p.y,24);
+  if(idx>=0) S.nodes.splice(idx,1);
+  else{ S.strokes=[]; S.particles=[]; }
+});
+
+cv.addEventListener('touchstart',e=>{e.preventDefault();S.drawing=true;const p=pt(e);S.current=[{...p,spd:0}];S.lastPos=p;S.lastTime=performance.now();},{passive:false});
+cv.addEventListener('touchmove', e=>{e.preventDefault();if(!S.drawing)return;const p=pt(e),now=performance.now();const spd=S.lastPos?Math.hypot(p.x-S.lastPos.x,p.y-S.lastPos.y)/(now-S.lastTime+1)*16:3;const l=S.current[S.current.length-1];if(Math.hypot(p.x-l.x,p.y-l.y)>4)S.current.push({...p,spd});S.lastPos=p;S.lastTime=now;},{passive:false});
+cv.addEventListener('touchend', e=>{e.preventDefault();commit();},{passive:false});
+
+window.addEventListener('keydown',e=>{
+  if(e.key===' '){ S.strokes=[]; S.particles=[]; }
+  if(e.key==='Backspace'||e.key==='Delete') S.nodes=[];
+  if(e.key==='Escape'){ S.strokes=[]; S.nodes=[]; S.particles=[]; }
+});
+
+/* ── NODE TYPE ──────────────────────────────────────── */
+function setNode(t){
+  S.nodeType=t;
+  document.getElementById('nb-field').classList.toggle('active',t==='field');
+  document.getElementById('nb-hole').classList.toggle('active',t==='hole');
+}
+
+/* ── EXPORT ─────────────────────────────────────────── */
+function exportPNG(){
+  const a=document.createElement('a');
+  a.href=cv.toDataURL('image/png');
+  a.download=`world-${Date.now()}.png`; a.click();
+}
+
+let recorder=null,recChunks=[],recStart=0,recTimer=null;
+function captureFrame(){ if(recorder&&recorder.state==='recording'&&performance.now()-recStart>8000) stopRecord(); }
+function toggleRecord(){ recorder&&recorder.state==='recording'?stopRecord():startRecord(); }
+function startRecord(){
+  if(!cv.captureStream){alert('Not supported.');return;}
+  recChunks=[];
+  const mime=MediaRecorder.isTypeSupported('video/webm;codecs=vp9')?'video/webm;codecs=vp9':'video/webm';
+  try{recorder=new MediaRecorder(cv.captureStream(30),{mimeType:mime,videoBitsPerSecond:8000000});}
+  catch(e){recorder=new MediaRecorder(cv.captureStream(30));}
+  recorder.ondataavailable=e=>{if(e.data.size>0)recChunks.push(e.data);};
+  recorder.onstop=()=>{
+    const blob=new Blob(recChunks,{type:'video/webm'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    a.download=`world-${Date.now()}.webm`;a.click();
+  };
+  recorder.start(200); recStart=performance.now();
+  document.getElementById('rec-btn').classList.add('rec');
+  document.getElementById('rec-btn').textContent='STOP';
+  document.getElementById('rec-ind').style.display='flex';
+  recTimer=setInterval(()=>{ document.getElementById('rec-lbl').textContent=`REC ${((performance.now()-recStart)/1000).toFixed(1)}s`; },100);
+}
+function stopRecord(){
+  if(!recorder||recorder.state!=='recording') return;
+  recorder.stop();
+  document.getElementById('rec-btn').classList.remove('rec');
+  document.getElementById('rec-btn').textContent='REC';
+  document.getElementById('rec-ind').style.display='none';
+  clearInterval(recTimer);
+}
+
+/* ── BOOT ───────────────────────────────────────────── */
+resize(); loop();
+</script>
+</body>
+</html>
