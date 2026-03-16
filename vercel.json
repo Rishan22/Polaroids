@@ -1,9 +1,4 @@
 {
-  "functions": {
-    "store.js": {
-      "runtime": "@vercel/node"
-    }
-  },
   "routes": [
     { "src": "/store", "dest": "/store.js" },
     { "src": "/(.*\\.html)", "dest": "/$1" },
