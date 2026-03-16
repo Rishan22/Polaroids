@@ -1,28 +1,28 @@
-import { kv } from '@vercel/kv';
+const { kv } = require('@vercel/kv');
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
+function setCORS(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
 
 function token() {
   return Math.random().toString(36).slice(2, 10) +
          Math.random().toString(36).slice(2, 10);
 }
 
-export default async function handler(req, res) {
-  if (req.method === 'OPTIONS') {
-    return res.status(204).set(CORS).end();
-  }
+module.exports = async function handler(req, res) {
+  setCORS(res);
 
-  Object.entries(CORS).forEach(([k, v]) => res.setHeader(k, v));
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
 
   // POST /store  — save a named epoch
   // body: { observer, label, epoch }
   // returns: { id }
   if (req.method === 'POST') {
-    const { observer, label, epoch } = req.body ?? {};
+    const { observer, label, epoch } = req.body || {};
     if (!observer || !label || !epoch) {
       return res.status(400).json({ error: 'observer, label, epoch required' });
     }
@@ -31,7 +31,6 @@ export default async function handler(req, res) {
     const record = { id, observer, label, epoch, created: now, updated: now };
 
     await kv.set(`e:${id}`, record);
-    // per-observer index sorted by timestamp
     await kv.zadd(`o:${observer}`, { score: now, member: id });
 
     return res.status(200).json({ id });
@@ -53,4 +52,4 @@ export default async function handler(req, res) {
   }
 
   return res.status(400).json({ error: 'invalid request' });
-}
+};
