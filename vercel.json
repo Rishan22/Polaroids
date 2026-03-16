@@ -1,7 +1,7 @@
 {
+  "functions": {},
   "routes": [
-    { "src": "/store(.*)", "dest": "/api/store.js" },
-    { "src": "/(.*\\.html)", "dest": "/$1" },
+    { "src": "/store", "dest": "/api/store.js" },
     { "src": "/", "dest": "/indexum.html" }
   ]
 }
