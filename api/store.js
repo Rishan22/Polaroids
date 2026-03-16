@@ -1,4 +1,9 @@
-const { kv } = require('@vercel/kv');
+const { Redis } = require('@upstash/redis');
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
 
 function setCORS(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -30,25 +35,29 @@ module.exports = async function handler(req, res) {
     const now = Date.now();
     const record = { id, observer, label, epoch, created: now, updated: now };
 
-    await kv.set(`e:${id}`, record);
-    await kv.zadd(`o:${observer}`, { score: now, member: id });
+    await redis.set(`e:${id}`, JSON.stringify(record));
+    await redis.zadd(`o:${observer}`, { score: now, member: id });
 
     return res.status(200).json({ id });
   }
 
   // GET /store?id=xxx  — retrieve single epoch
   if (req.method === 'GET' && req.query.id) {
-    const record = await kv.get(`e:${req.query.id}`);
-    if (!record) return res.status(404).json({ error: 'not found' });
+    const raw = await redis.get(`e:${req.query.id}`);
+    if (!raw) return res.status(404).json({ error: 'not found' });
+    const record = typeof raw === 'string' ? JSON.parse(raw) : raw;
     return res.status(200).json(record);
   }
 
   // GET /store?observer=xxx  — list observer's epochs, newest first
   if (req.method === 'GET' && req.query.observer) {
-    const ids = await kv.zrange(`o:${req.query.observer}`, 0, -1, { rev: true });
+    const ids = await redis.zrange(`o:${req.query.observer}`, 0, -1, { rev: true });
     if (!ids.length) return res.status(200).json([]);
-    const records = await Promise.all(ids.map(id => kv.get(`e:${id}`)));
-    return res.status(200).json(records.filter(Boolean));
+    const raws = await Promise.all(ids.map(id => redis.get(`e:${id}`)));
+    const records = raws
+      .filter(Boolean)
+      .map(r => typeof r === 'string' ? JSON.parse(r) : r);
+    return res.status(200).json(records);
   }
 
   return res.status(400).json({ error: 'invalid request' });
