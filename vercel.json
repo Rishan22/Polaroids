@@ -1,4 +1,10 @@
 {
+  "functions": {
+    "store.js": {
+      "memory": 128,
+      "maxDuration": 5
+    }
+  },
   "routes": [
     { "src": "/store", "dest": "/store.js" },
     { "src": "/(.*\\.html)", "dest": "/$1" },
