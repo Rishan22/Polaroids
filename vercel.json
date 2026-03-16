@@ -1,7 +1,6 @@
 {
-
   "routes": [
-    { "src": "/store", "dest": "/store.js" },
+    { "src": "/store(.*)", "dest": "/api/store.js" },
     { "src": "/(.*\\.html)", "dest": "/$1" },
     { "src": "/", "dest": "/indexum.html" }
   ]
