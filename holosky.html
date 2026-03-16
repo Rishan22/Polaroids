@@ -1,0 +1,1740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Retrotube</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;background:#010108;overflow:hidden;}
+canvas{position:fixed;top:0;left:0;width:100%;height:100%;cursor:crosshair;}
+#ui{position:fixed;inset:0;pointer-events:none;user-select:none;}
+#hint{
+  position:absolute;top:18px;right:18px;
+  font-family:'Courier New',monospace;
+  font-size:7.5px;letter-spacing:.18em;text-transform:uppercase;
+  color:rgba(160,180,220,.18);
+  transition:opacity 4s;
+  text-align:right;line-height:1.9;
+}
+#fs-btn{
+  position:fixed;top:14px;left:14px;
+  font-family:'Courier New',monospace;font-size:7px;
+  letter-spacing:.2em;text-transform:uppercase;
+  color:rgba(140,170,220,.18);cursor:pointer;
+  pointer-events:all;border:none;background:none;
+  transition:color .2s;
+}
+#fs-btn:hover{color:rgba(180,210,255,.45);}
+#toast{
+  position:absolute;top:28px;left:50%;
+  transform:translateX(-50%);
+  font-family:'Courier New',monospace;
+  font-size:9px;letter-spacing:.24em;
+  color:rgba(200,220,255,.7);
+  background:rgba(8,12,30,.75);
+  border:1px solid rgba(120,160,255,.18);
+  box-shadow:0 0 24px rgba(80,120,255,.1),inset 0 1px 0 rgba(255,255,255,.04);
+  padding:7px 22px 6px;border-radius:2px;
+  opacity:0;transition:opacity .35s;white-space:nowrap;
+}
+#longpress-ring{
+  position:fixed;pointer-events:none;border-radius:50%;
+  border:1.5px solid rgba(180,200,255,.65);
+  box-shadow:0 0 14px rgba(120,160,255,.35);
+  transform:translate(-50%,-50%) scale(0);
+  transition:transform .52s cubic-bezier(.15,.8,.35,1),opacity .52s;
+  opacity:0;width:56px;height:56px;
+}
+
+/* ── INSTRUMENTS PANEL ── */
+#instruments{
+  position:fixed;bottom:14px;left:14px;
+  font-family:'Courier New',monospace;
+  font-size:7px;letter-spacing:.16em;
+  color:rgba(140,170,220,.35);
+  line-height:2;pointer-events:none;
+  text-transform:uppercase;
+  transition:opacity .4s;
+}
+#instruments.hidden{opacity:0;}
+#instruments span{color:rgba(180,210,255,.6);}
+#inst-toggle{
+  position:fixed;bottom:14px;right:14px;
+  font-family:'Courier New',monospace;font-size:7px;
+  letter-spacing:.2em;text-transform:uppercase;
+  color:rgba(140,170,220,.22);cursor:pointer;
+  pointer-events:all;border:none;background:none;
+  transition:color .2s;
+}
+#inst-toggle:hover{color:rgba(180,210,255,.5);}
+
+/* ── CIPHER OVERLAY ── */
+#seed-overlay{
+  position:fixed;inset:0;background:rgba(1,1,12,.88);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  font-family:'Courier New',monospace;
+  opacity:0;pointer-events:none;transition:opacity .25s;z-index:100;
+}
+#seed-overlay.open{opacity:1;pointer-events:all;}
+#seed-overlay h2{
+  font-size:9px;letter-spacing:.32em;text-transform:uppercase;
+  color:rgba(180,200,255,.5);margin-bottom:22px;
+}
+#seed-input{
+  background:rgba(8,12,30,.9);border:1px solid rgba(120,160,255,.3);
+  color:rgba(220,235,255,.9);font-family:'Courier New',monospace;
+  font-size:13px;letter-spacing:.18em;
+  padding:10px 18px;border-radius:2px;width:260px;text-align:center;outline:none;
+}
+#seed-display{
+  margin-top:16px;font-size:8px;letter-spacing:.22em;
+  color:rgba(140,170,220,.4);text-align:center;line-height:2;
+}
+#seed-close{
+  margin-top:20px;font-size:8px;letter-spacing:.28em;
+  color:rgba(120,150,200,.4);cursor:pointer;pointer-events:all;
+  text-transform:uppercase;border:none;background:none;
+}
+#seed-close:hover{color:rgba(180,210,255,.7);}
+
+/* ── REPL OVERLAY ── */
+#repl-overlay{
+  position:fixed;bottom:0;left:0;right:0;
+  background:rgba(1,2,10,.92);border-top:1px solid rgba(80,120,200,.18);
+  font-family:'Courier New',monospace;font-size:10px;letter-spacing:.1em;
+  padding:10px 14px 12px;
+  opacity:0;pointer-events:none;transition:opacity .2s;z-index:100;
+}
+#repl-overlay.open{opacity:1;pointer-events:all;}
+#repl-log{
+  color:rgba(140,170,220,.5);font-size:8px;line-height:1.9;
+  max-height:80px;overflow-y:auto;margin-bottom:6px;
+}
+#repl-row{display:flex;align-items:center;gap:8px;}
+#repl-prompt{color:rgba(100,150,220,.6);}
+#repl-input{
+  flex:1;background:none;border:none;outline:none;
+  color:rgba(210,225,255,.85);font-family:'Courier New',monospace;
+  font-size:10px;letter-spacing:.1em;
+}
+
+/* ── EXPORT OVERLAY ── */
+#export-overlay{
+  position:fixed;top:0;right:0;bottom:0;width:260px;
+  background:rgba(1,2,10,.92);border-left:1px solid rgba(80,120,200,.14);
+  font-family:'Courier New',monospace;font-size:8px;
+  padding:22px 16px;overflow-y:auto;
+  opacity:0;pointer-events:none;transition:opacity .2s;z-index:100;
+  color:rgba(140,170,220,.55);letter-spacing:.14em;line-height:2;
+}
+#export-overlay.open{opacity:1;pointer-events:all;}
+#export-overlay h3{
+  font-size:7px;letter-spacing:.32em;text-transform:uppercase;
+  color:rgba(180,200,255,.35);margin-bottom:14px;
+}
+.exp-btn{
+  display:block;width:100%;margin-top:10px;padding:7px 0;
+  background:rgba(40,70,140,.18);border:1px solid rgba(80,120,200,.22);
+  color:rgba(180,210,255,.6);font-family:'Courier New',monospace;
+  font-size:8px;letter-spacing:.22em;text-transform:uppercase;
+  cursor:pointer;border-radius:2px;
+}
+.exp-btn:hover{background:rgba(60,100,180,.28);color:rgba(200,225,255,.85);}
+#export-close{
+  position:absolute;top:14px;right:14px;
+  background:none;border:none;color:rgba(120,150,200,.4);
+  font-family:'Courier New',monospace;font-size:9px;cursor:pointer;
+}
+#export-close:hover{color:rgba(180,210,255,.7);}
+#telemetry-list{
+  max-height:200px;overflow-y:auto;
+  font-size:7px;color:rgba(120,160,200,.45);
+  line-height:1.8;margin-top:8px;
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <div id="hint">draw · hold to place locus · hold to cycle · dbl-tap erase · i meter · \ key · ` repl · tab emit</div>
+  <div id="toast"></div>
+</div>
+<button id="fs-btn">⛶</button>
+<div id="longpress-ring"></div>
+
+<!-- INSTRUMENTS -->
+<div id="instruments">
+  flux <span id="inst-entropy">0.000</span> &nbsp;·&nbsp;
+  form <span id="inst-strokes">0</span> &nbsp;·&nbsp;
+  loci <span id="inst-nodes">0</span> &nbsp;·&nbsp;
+  hits <span id="inst-crossings">0</span> &nbsp;·&nbsp;
+  glyph <span id="inst-cadence">—</span> &nbsp;·&nbsp;
+  key <span id="inst-seed">—</span> &nbsp;·&nbsp;
+  patch <span id="sky-patch">—</span>
+</div>
+<button id="inst-toggle">inst ◈</button>
+
+<!-- CIPHER OVERLAY -->
+<div id="seed-overlay">
+  <h2>Cipher</h2>
+  <input id="seed-input" type="text" placeholder="enter cipher to restore" spellcheck="false" autocomplete="off">
+  <div id="seed-display"></div>
+  <button id="seed-close">close</button>
+</div>
+
+<!-- REPL OVERLAY -->
+<div id="repl-overlay">
+  <div id="repl-log"></div>
+  <div id="repl-row">
+    <span id="repl-prompt">&gt;</span>
+    <input id="repl-input" type="text" spellcheck="false" autocomplete="off"
+      placeholder="locus x y archetype strength  |  clear  |  euc n archetype  |  pressure fast|slow  |  snap on|off">
+  </div>
+</div>
+
+<!-- EXPORT OVERLAY -->
+<div id="export-overlay">
+  <button id="export-close">×</button>
+  <h3>Emission Export</h3>
+  <div id="export-stats"></div>
+  <button class="exp-btn" id="btn-png">Export PNG</button>
+  <button class="exp-btn" id="btn-session">Export Session JSON</button>
+  <button class="exp-btn" id="btn-telemetry">Export Transit Log</button>
+  <div style="margin-top:16px;font-size:7px;color:rgba(120,150,200,.35);letter-spacing:.2em;text-transform:uppercase;">Recent Transits</div>
+  <div id="telemetry-list"></div>
+</div>
+
+<script>
+
+const cv=document.getElementById('c');
+const cx=cv.getContext('2d');
+let W,H,DPR=1;
+
+function resize(){
+  DPR=window.devicePixelRatio||1;
+  W=window.innerWidth;H=window.innerHeight;
+  cv.width=Math.round(W*DPR);cv.height=Math.round(H*DPR);
+  cv.style.width=W+'px';cv.style.height=H+'px';
+  cx.setTransform(DPR,0,0,DPR,0,0);
+  buildStarfield();
+}
+window.addEventListener('resize',resize);
+
+/* ─── REAL SKY MAP ─── */
+// Bright Star Catalogue subset: [RA_hours, Dec_degrees, Vmag, spectral_type_char]
+// spectral: O=0,B=1,A=2,F=3,G=4,K=5,M=6 → drives color
+// ~180 stars to mag 3.5, plus key deep-sky anchors
+const BSC_STARS=[
+  // Ursa Minor (Polaris group)
+  [2.530,89.26,2.02,1],[15.734,74.16,2.08,5],[16.292,75.76,3.05,2],
+  // Ursa Major
+  [11.062,61.75,1.79,2],[11.897,53.69,2.37,2],[12.257,57.03,2.44,2],
+  [12.900,55.96,3.31,2],[13.398,54.93,1.86,2],[13.792,49.31,1.77,2],
+  [11.031,56.38,3.01,2],[9.849,59.04,3.67,5],[10.284,42.91,3.45,5],
+  // Cassiopeia
+  [0.675,56.54,2.27,1],[0.153,59.15,2.68,5],[0.945,60.72,2.47,3],
+  [1.430,60.24,3.38,3],[1.906,63.67,3.35,1],
+  // Perseus
+  [3.405,49.86,1.79,1],[3.136,40.96,2.12,5],[3.964,40.51,2.85,2],
+  [3.715,47.79,3.01,1],[3.080,38.84,3.83,3],
+  // Auriga
+  [5.278,45.99,0.08,3],[5.995,44.95,2.65,1],[5.038,41.23,2.69,5],
+  [5.108,33.17,3.72,1],[4.900,33.17,3.03,2],
+  // Gemini
+  [7.755,28.03,1.93,2],[7.577,31.89,1.14,3],[6.754,25.13,1.58,2],
+  [6.629,16.40,3.53,2],[6.383,22.51,3.79,2],[7.069,20.57,3.35,2],
+  // Orion
+  [5.919,-7.03,0.12,1],[5.679,-1.94,0.45,4],[5.533,-0.30,1.69,1],
+  [5.242,-8.20,2.06,1],[4.830,6.96,0.18,5],[4.856,5.61,2.77,1],
+  [5.588,-5.91,1.70,1],[5.603,-1.20,2.23,1],[5.248,-5.09,1.74,1],
+  // Canis Major / Canis Minor
+  [6.752,-16.72,-1.46,2],[7.401,-29.30,1.50,1],[7.140,-26.39,1.98,1],
+  [7.947,-17.96,2.45,1],[7.825,-24.18,3.02,1],[7.655,-5.91,0.38,3],
+  // Leo
+  [10.140,11.97,1.35,2],[10.333,19.84,2.14,5],[11.237,20.52,2.01,5],
+  [10.122,23.42,2.98,5],[11.235,15.43,3.44,2],[9.764,26.01,3.52,5],
+  // Virgo
+  [13.420,-11.16,0.98,2],[13.167,-5.54,2.83,5],[12.694,-1.45,3.38,3],
+  [12.332,-3.39,3.87,2],[13.037,10.96,3.61,2],
+  // Boötes
+  [14.261,19.18,-0.04,5],[14.750,27.07,3.58,5],[14.687,16.42,2.68,5],
+  [15.032,40.39,2.70,3],[14.534,30.37,3.46,2],
+  // Scorpius
+  [16.491,-26.43,1.06,1],[17.622,-37.10,1.63,1],[16.004,-22.62,2.29,1],
+  [16.836,-34.29,2.62,1],[17.208,-43.24,1.86,5],[17.793,-40.13,2.82,1],
+  [16.352,-25.59,2.89,1],[15.981,-22.95,3.21,2],[17.560,-37.30,3.00,1],
+  // Sagittarius
+  [18.921,-26.30,1.79,2],[18.350,-29.83,2.05,5],[19.045,-21.73,2.72,2],
+  [18.466,-25.42,2.81,5],[18.229,-21.06,3.16,5],[18.096,-30.42,3.11,2],
+  // Cygnus
+  [20.691,45.28,1.25,2],[19.512,27.96,2.23,2],[20.771,33.97,2.46,3],
+  [21.216,30.23,2.86,2],[20.375,40.26,3.20,2],[19.750,45.13,2.87,3],
+  // Lyra
+  [18.616,38.78,0.03,2],[18.908,32.69,3.52,2],[18.835,33.36,3.25,2],
+  // Aquila
+  [19.846,8.87,0.77,2],[19.090,13.86,2.99,2],[19.771,10.61,2.72,5],
+  // Hercules
+  [17.244,14.39,2.78,5],[17.975,30.93,2.81,5],[16.688,31.60,3.16,5],
+  // Corona Borealis
+  [15.578,26.71,2.22,2],[15.712,29.11,3.84,2],
+  // Taurus
+  [4.700,16.51,0.85,5],[3.791,24.11,1.65,1],[3.413,9.73,2.97,1],
+  [4.477,15.96,2.87,5],[5.438,21.14,3.60,1],[4.012,12.49,3.53,5],
+  // Aries
+  [2.120,23.46,2.00,2],[1.911,20.81,2.64,5],[1.892,19.29,3.63,2],
+  // Pisces
+  [1.524,15.35,3.62,5],[23.666,3.82,3.82,5],
+  // Aquarius
+  [22.097,-0.32,2.90,5],[22.877,-7.58,2.91,5],[22.361,-1.39,3.73,2],
+  // Capricornus
+  [20.294,-12.51,2.85,2],[21.784,-16.13,3.08,5],
+  // Pegasus
+  [23.079,28.08,2.49,1],[22.691,10.83,2.83,2],[0.221,29.09,2.83,1],
+  [23.063,15.21,2.44,2],[21.744,9.87,2.38,1],
+  // Andromeda
+  [0.140,29.09,2.06,1],[1.162,35.62,2.07,5],[2.066,42.33,2.10,5],
+  // Centaurus (southern)
+  [14.660,-60.83,-0.27,2],[14.064,-60.37,0.61,1],[12.139,-50.72,2.85,2],
+  // Crux (southern cross)
+  [12.444,-63.10,0.77,1],[12.521,-57.11,1.25,2],[12.353,-59.69,1.63,1],[12.780,-59.69,2.10,1],
+  // Eridanus
+  [1.628,-57.24,0.46,2],[3.967,-13.51,2.79,5],[4.298,-34.02,3.55,2],
+  // Piscis Austrinus
+  [22.961,-29.62,1.16,2],
+  // Grus
+  [22.137,-46.96,1.74,1],[22.488,-43.50,2.07,1],
+  // Vela
+  [8.159,-47.34,1.75,2],[9.369,-55.01,1.96,2],[8.745,-54.71,2.21,5],
+  // Puppis/Carina area
+  [7.821,-24.86,2.23,5],[6.399,-52.70,1.68,2],[9.285,-59.28,2.25,2],
+  // Extra bright naked-eye stars
+  [6.616,-52.70,-0.62,2], // Canopus
+  [1.979,-17.99,1.74,1], // Deneb Kaitos
+];
+
+let skyStars=[];
+let skyReady=false;
+let skyLat=0,skyLon=0,skyAlt=0; // observer position
+let skyPatchLabel='';
+let geoGranted=false;
+
+// Star spectral type → hue/sat
+function specColor(t){
+  // t: 0=O,1=B,2=A,3=F,4=G,5=K,6=M
+  const table=[
+    {hue:200,sat:80}, // O - blue
+    {hue:210,sat:60}, // B - blue-white
+    {hue:215,sat:20}, // A - white-blue
+    {hue:50, sat:25}, // F - white-yellow
+    {hue:50, sat:55}, // G - yellow
+    {hue:30, sat:70}, // K - orange
+    {hue:8,  sat:80}, // M - red
+  ];
+  return table[Math.max(0,Math.min(6,Math.round(t)))];
+}
+
+// Compute Julian Date from JS Date
+function julianDate(d){
+  return d.getTime()/86400000+2440587.5;
+}
+
+// Greenwich Mean Sidereal Time in degrees
+function gmstDeg(jd){
+  const T=(jd-2451545.0)/36525;
+  let gmst=280.46061837+360.98564736629*(jd-2451545)+0.000387933*T*T-T*T*T/38710000;
+  return((gmst%360)+360)%360;
+}
+
+// Convert RA (hours), Dec (degrees), observer lat (degrees), LST (degrees) → Alt, Az
+function radec2altaz(ra_h,dec_d,lat_d,lst_d){
+  const ra=ra_h*15; // degrees
+  const ha=((lst_d-ra)%360+360)%360; // hour angle deg
+  const H=ha*Math.PI/180,d=dec_d*Math.PI/180,L=lat_d*Math.PI/180;
+  const sinAlt=Math.sin(d)*Math.sin(L)+Math.cos(d)*Math.cos(L)*Math.cos(H);
+  const alt=Math.asin(Math.max(-1,Math.min(1,sinAlt)));
+  const cosAz=(Math.sin(d)-Math.sin(alt)*Math.sin(L))/(Math.cos(alt)*Math.cos(L));
+  let az=Math.acos(Math.max(-1,Math.min(1,cosAz)));
+  if(Math.sin(H)>0) az=Math.PI*2-az;
+  return{alt:alt*180/Math.PI, az:az*180/Math.PI};
+}
+
+// Stereographic projection: alt/az → screen x,y
+// Centre of view = zenith (alt=90). We show a ~160° FOV hemisphere.
+function altaz2screen(alt_d,az_d,fov_deg=160){
+  // r = 0 at zenith (alt=90), 1 at horizon (alt=0), >1 below
+  const r=(90-alt_d)/(fov_deg/2);
+  const theta=(az_d-180)*Math.PI/180; // north up when az=0 = top
+  const cx_=W/2+r*(W/2)*Math.sin(theta)*0.9;
+  const cy_=H/2-r*(Math.min(W,H)/2)*Math.cos(theta)*0.9;
+  return{x:cx_,y:cy_,r};
+}
+
+function buildSkyStars(){
+  skyStars=[];
+  const now=new Date();
+  const jd=julianDate(now);
+  const gmst=gmstDeg(jd);
+  const lst=((gmst+skyLon)%360+360)%360; // local sidereal time
+
+  // Milky Way band: approximate galactic equator in RA/Dec pairs for background glow
+  // We'll use them later in drawStars
+
+  for(const [ra,dec,vmag,spec] of BSC_STARS){
+    const {alt,az}=radec2altaz(ra,dec,skyLat,lst);
+    if(alt<0) continue; // horizon is the patch boundary
+    const {x,y,r:screenR}=altaz2screen(alt,az,160);
+    if(screenR>1.0) continue; // outside FOV
+    // Brightness: mag → alpha. Mag 0 = bright, mag 4 = dim
+    const brightness=Math.pow(10,(-vmag+1)*0.25);
+    const alpha=Math.max(0.05,Math.min(0.9,brightness*0.45));
+    // Size
+    const radius=vmag<1?1.8:vmag<2?1.2:vmag<3?0.7:0.35;
+    const {hue,sat}=specColor(spec);
+    // Altitude dimming: full brightness above 15°, fades toward and below horizon
+    const atmDim=alt<8?Math.max(0,alt/8):1;
+    skyStars.push({x,y,radius,alpha:alpha*atmDim,hue,sat,vmag,
+      flicker:Math.random()*Math.PI*2,fspeed:Math.random()*.008+.001,
+      giant:vmag<1.5});
+  }
+  skyReady=true;
+}
+
+function buildStarfield(){
+  // Always build real sky. If no geo yet, use lat=0,lon=0 (null island) as default
+  buildSkyStars();
+}
+
+function drawStars(){
+  if(!skyStars.length) return;
+
+  const R=Math.min(W,H)*0.44;
+  const cx_=W/2, cy_=H/2;
+
+  // ── background grid — always visible, very faint ──
+  cx.save();
+  cx.strokeStyle='rgba(100,120,160,0.045)';
+  cx.lineWidth=0.5;
+  const gridStep=Math.round(Math.min(W,H)/16);
+  for(let x=0;x<W;x+=gridStep){cx.beginPath();cx.moveTo(x,0);cx.lineTo(x,H);cx.stroke();}
+  for(let y=0;y<H;y+=gridStep){cx.beginPath();cx.moveTo(0,y);cx.lineTo(W,y);cx.stroke();}
+  cx.restore();
+
+  // ── scope ring — dashed dark grey, always drawn ──
+  cx.save();
+  cx.beginPath();cx.arc(cx_,cy_,R,0,Math.PI*2);
+  cx.strokeStyle='rgba(80,95,110,0.38)';
+  cx.lineWidth=0.8;
+  cx.setLineDash([6,10]);
+  cx.lineDashOffset=0;
+  cx.stroke();
+  cx.setLineDash([]);
+  cx.restore();
+
+  for(const s of skyStars){
+    // subtle twinkle
+    const flick=0.82+0.18*Math.sin(S.frame*s.fspeed+s.flicker);
+    const alpha=s.alpha*flick;
+    if(s.giant){
+      const g2=cx.createRadialGradient(s.x,s.y,0,s.x,s.y,s.radius*5);
+      g2.addColorStop(0,`hsla(${s.hue},${s.sat}%,92%,${alpha*.4})`);
+      g2.addColorStop(1,'rgba(0,0,0,0)');
+      cx.beginPath();cx.arc(s.x,s.y,s.radius*5,0,Math.PI*2);
+      cx.fillStyle=g2;cx.fill();
+    }
+    cx.beginPath();cx.arc(s.x,s.y,s.radius,0,Math.PI*2);
+    cx.fillStyle=`hsla(${s.hue},${s.sat}%,${s.giant?95:82}%,${alpha})`;
+    cx.fill();
+  }
+
+}
+
+/* ─── GEO / SKY INIT ─── */
+// Each user is a patch of the real sky sphere above their location.
+// The celestial sphere — viewed from inside — is "The Hollow Earth":
+// an astral sphere surrounding Earth, and users occupy positions on its
+// inner surface. When connected browser-to-browser (future), each user's
+// RA/Dec patch tiles into a shared spherical map. The coordinate system is
+// already real: skyLat/skyLon → LST → Alt/Az → screen. The P2P layer
+// simply needs to exchange {lat,lon,stars[],constructs[]} and stitch patches
+// by converting each peer's alt/az back to RA/Dec, then re-projecting into
+// the local observer's frame. Seam blending: haversine distance weighting.
+function initSky(){
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(pos=>{
+      skyLat=pos.coords.latitude;
+      skyLon=pos.coords.longitude;
+      skyAlt=pos.coords.altitude||0;
+      geoGranted=true;
+      // Patch label: truncated coordinate tag
+      const latTag=(Math.abs(skyLat).toFixed(1))+(skyLat>=0?'N':'S');
+      const lonTag=(Math.abs(skyLon).toFixed(1))+(skyLon>=0?'E':'W');
+      skyPatchLabel=latTag+' '+lonTag;
+      document.getElementById('sky-patch').textContent=skyPatchLabel;
+      buildSkyStars(); // rebuild with real position
+    },()=>{
+      // denied — keep lat=0,lon=0 fallback, note equatorial sky
+      document.getElementById('sky-patch').textContent='0.0N 0.0E';
+      buildSkyStars();
+    },{enableHighAccuracy:false,timeout:8000});
+  }
+  // Rebuild every 4 minutes as sky rotates (~1° per 4 min)
+  setInterval(()=>{ buildSkyStars(); },240000);
+}
+
+/* ─── ARCHETYPES ─── */
+const ARCHETYPES=[
+  {id:'q+',hue:44, sat:92,lit:90,fieldType:'radial',sign: 1},
+  {id:'q-',hue:198,sat:88,lit:74,fieldType:'radial',sign:-1},
+  {id:'mn',hue:4,  sat:96,lit:68,fieldType:'dipole',sign: 1},
+  {id:'ms',hue:218,sat:82,lit:64,fieldType:'dipole',sign:-1},
+  {id:'il',hue:148,sat:72,lit:62,fieldType:'curl',  sign: 1},
+];
+const ARCHETYPE_SYMS=['✦','◎','↻','↺','⊛'];
+const ARCH_NAMES=['q+','q-','mn','ms','il'];
+
+/* ─── STATE ─── */
+const S={
+  strokes:[],nodes:[],drawing:false,cur:[],curTimes:[],frame:0,drift:{x:0,y:0},
+  ghost:null,
+  pressureMode:'default',
+  snapEnabled:false,snapGrid:40,
+  strokeStarts:[],
+  automationRecord:[],
+  automationRecording:false,
+  automationStartT:0,
+  sessionStartT:performance.now(),
+};
+
+/* ─── AMBIENT AUDIO ─── */
+let audioCtx=null,droneOsc=null,droneGain=null,droneOsc2=null,droneGain2=null;
+let audioActive=false;
+function initAudio(){
+  if(audioCtx) return;
+  try{
+    audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    const master=audioCtx.createGain();master.gain.value=0.07;master.connect(audioCtx.destination);
+
+    droneOsc=audioCtx.createOscillator();
+    droneOsc.type='sine';droneOsc.frequency.value=55;
+    droneGain=audioCtx.createGain();droneGain.gain.value=0;
+    droneOsc.connect(droneGain);droneGain.connect(master);
+    droneOsc.start();
+
+    droneOsc2=audioCtx.createOscillator();
+    droneOsc2.type='sine';droneOsc2.frequency.value=82.4;
+    droneGain2=audioCtx.createGain();droneGain2.gain.value=0;
+    droneOsc2.connect(droneGain2);droneGain2.connect(master);
+    droneOsc2.start();
+    audioActive=true;
+  }catch(e){}
+}
+function updateAudio(){
+  if(!audioActive||!droneGain) return;
+  const coherence=computeEntropy();
+  const nCount=Math.min(1,S.nodes.length/6);
+  const targetGain=coherence*nCount*0.65;
+  // frequency shifts with dominant archetype hue
+  let domHue=220;
+  if(S.nodes.length){
+    const counts=new Array(ARCHETYPES.length).fill(0);
+    for(const n of S.nodes) counts[n.archIdx]++;
+    const dom=counts.indexOf(Math.max(...counts));
+    domHue=ARCHETYPES[dom].hue;
+  }
+  const baseFreq=48+domHue*0.08; // 48→76 Hz
+  const t=audioCtx.currentTime;
+  droneGain.gain.linearRampToValueAtTime(targetGain,t+0.8);
+  droneGain2.gain.linearRampToValueAtTime(targetGain*0.4,t+1.2);
+  droneOsc.frequency.linearRampToValueAtTime(baseFreq,t+2);
+  droneOsc2.frequency.linearRampToValueAtTime(baseFreq*1.5,t+2);
+}
+const TELEMETRY=[];
+let totalCrossings=0;
+function logCrossing(evt){
+  TELEMETRY.push(evt);
+  totalCrossings++;
+  if(TELEMETRY.length>2000) TELEMETRY.shift();
+}
+
+/* ─── COHERENCE (entropy) ─── */
+function computeEntropy(){
+  if(!S.nodes.length) return 0;
+  const counts=new Array(ARCHETYPES.length).fill(0);
+  for(const n of S.nodes) counts[n.archIdx]++;
+  const total=S.nodes.length;
+  let h=0;
+  for(const c of counts){if(c>0){const p=c/total;h-=p*Math.log2(p);}}
+  const archH=h/Math.log2(ARCHETYPES.length);
+  const complexity=Math.min(1,(S.nodes.length*0.12)+(S.strokes.length*0.04));
+  return Math.min(1,archH*0.6+complexity*0.4);
+}
+
+/* ─── CIPHER SYSTEM ─── */
+function stateToSeed(){
+  if(!S.nodes.length) return null;
+  const data=S.nodes.map(n=>({
+    x:Math.round(n.x),y:Math.round(n.y),
+    a:n.archIdx,s:Math.round(n.str)
+  }));
+  const json=JSON.stringify(data);
+  return btoa(json).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+}
+function seedToState(seed){
+  try{
+    const b64=seed.replace(/-/g,'+').replace(/_/g,'/');
+    const json=atob(b64);
+    const data=JSON.parse(json);
+    S.nodes=data.map(d=>({
+      x:d.x,y:d.y,archIdx:d.a||0,str:d.s||140,
+      phase:Math.random()*Math.PI*2,_id:newNodeId()
+    }));
+    invalidateFieldLines();
+    return true;
+  }catch(e){return false;}
+}
+function updateSeedDisplay(){
+  const s=stateToSeed();
+  document.getElementById('inst-seed').textContent=s?s.slice(0,12)+'…':'—';
+  const sd=document.getElementById('seed-display');
+  if(s){
+    sd.innerHTML=`Current cipher:<br><span style="color:rgba(200,220,255,.8);font-size:11px;letter-spacing:.1em">${s}</span>`;
+  } else {
+    sd.textContent='Place loci to generate a cipher.';
+  }
+}
+
+/* ─── SNAP GRID ─── */
+function snapPt(x,y){
+  if(!S.snapEnabled) return {x,y};
+  return {
+    x:Math.round(x/S.snapGrid)*S.snapGrid,
+    y:Math.round(y/S.snapGrid)*S.snapGrid
+  };
+}
+
+/* ─── GLYPH FINGERPRINT (cadence) ─── */
+function cadenceString(){
+  const starts=S.strokeStarts;
+  if(starts.length<2) return '—';
+  const intervals=[];
+  for(let i=1;i<starts.length;i++) intervals.push(starts[i]-starts[i-1]);
+  const mean=intervals.reduce((a,b)=>a+b,0)/intervals.length;
+  const bins=intervals.map(v=>v<mean*.6?'S':v>mean*1.4?'L':'M');
+  return bins.slice(-8).join('');
+}
+
+/* ─── PHYSICS ─── */
+function fieldAt(x,y){
+  let fx=0,fy=0,hs=0;
+  for(const n of S.nodes){
+    const A=ARCHETYPES[n.archIdx];
+    const dx=n.x-x,dy=n.y-y;
+    const r=Math.sqrt(dx*dx+dy*dy)+.5;
+    const inv=n.str/(r+12);
+    if(A.fieldType==='radial'){fx+=dx*inv*A.sign;fy+=dy*inv*A.sign;hs+=A.hue*inv*A.sign*.4;}
+    else if(A.fieldType==='dipole'){const r3=r*r*r+.001;fx+=(3*dx*dy)/(r3*r*r)*inv*12*A.sign;fy+=(3*dy*dy-r*r)/(r3*r*r)*inv*12*A.sign;hs+=A.hue*inv*.5;}
+    else{fx+=-dy*inv*A.sign;fy+=dx*inv*A.sign;hs+=A.hue*inv*.6;}
+  }
+  return{x:fx,y:fy,hueShift:hs};
+}
+
+function simulate(){
+  const dt=1.1;
+  S.drift.x+=.011;S.drift.y+=.007;
+  for(const s of S.strokes){
+    // Age each stroke — drives powerup smoothing
+    s.age=(s.age||0)+1;
+    // smooth: 0 at birth → 1 at ~200 frames. Controls damping & flicker
+    const smooth=Math.min(1, s.age / 200);
+    // Damping: starts loose (flickery), tightens as the construct "charges"
+    const damp = 0.62 + smooth * 0.17;  // 0.62 → 0.79
+    // Constraint stiffness also increases with age
+    const stiff = 0.18 + smooth * 0.18; // 0.18 → 0.36
+
+    const n=s.pts.length;
+    for(const p of s.pts){
+      const f=fieldAt(p.x,p.y);
+      const resp=1/(p.mass+.15);
+
+      const prevDot=p._prevFieldDot||0;
+      const fieldMag=Math.hypot(f.x,f.y);
+      if(fieldMag>0.01){
+        const vnorm={x:p.vx/(Math.hypot(p.vx,p.vy)+.001),y:p.vy/(Math.hypot(p.vx,p.vy)+.001)};
+        const fnorm={x:f.x/fieldMag,y:f.y/fieldMag};
+        const dot=vnorm.x*fnorm.x+vnorm.y*fnorm.y;
+        if(prevDot!==0&&Math.sign(dot)!==Math.sign(prevDot)&&fieldMag>0.05){
+          let nearestId=null,nearestDist=Infinity;
+          for(let ni=0;ni<S.nodes.length;ni++){
+            const dd=Math.hypot(S.nodes[ni].x-p.x,S.nodes[ni].y-p.y);
+            if(dd<nearestDist){nearestDist=dd;nearestId=ni;}
+          }
+          logCrossing({
+            t:S.frame,
+            x:Math.round(p.x),y:Math.round(p.y),
+            nodeId:nearestId,
+            archetype:nearestId!==null?ARCH_NAMES[S.nodes[nearestId].archIdx]:'—',
+            strokeId:s.id,
+            dot:dot.toFixed(3)
+          });
+        }
+        p._prevFieldDot=dot;
+      }
+
+      if(!s._nodeSnapshot){
+        s._nodeSnapshot=S.nodes.map(n=>n._id);
+      }
+
+      p.vx=p.vx*damp+f.x*dt*resp;p.vy=p.vy*damp+f.y*dt*resp;
+      p.x+=p.vx;p.y+=p.vy;
+      p.hue+=(f.hueShift-p.hue)*.015;
+      if(p.x<0){p.x=0;p.vx*=-.2;}if(p.x>W){p.x=W;p.vx*=-.2;}
+      if(p.y<0){p.y=0;p.vy*=-.2;}if(p.y>H){p.y=H;p.vy*=-.2;}
+    }
+    const rs=s.restL/(n-1);
+    for(let i=0;i<n-1;i++){
+      const a=s.pts[i],b=s.pts[i+1];
+      const dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)+.001;
+      const k=(d-rs)/d*stiff;
+      const wa=1/(a.mass+.1),wb=1/(b.mass+.1),tot=wa+wb;
+      a.x+=dx*k*(wa/tot);a.y+=dy*k*(wa/tot);
+      b.x-=dx*k*(wb/tot);b.y-=dy*k*(wb/tot);
+    }
+  }
+
+  const currentNodeIds=new Set(S.nodes.map(n=>n._id));
+  for(const s of S.strokes){
+    if(s._nodeSnapshot&&s._nodeSnapshot.length>0){
+      const overlap=s._nodeSnapshot.filter(id=>currentNodeIds.has(id)).length;
+      s._orphanAlpha=overlap===0?0.28:1.0;
+    } else {
+      s._orphanAlpha=1.0;
+    }
+  }
+
+  // Scan for hardlight regions periodically
+  if(S.frame-hlScanFrame>=HL_SCAN_I){
+    hlScanFrame=S.frame;
+    scanHardlightRegions();
+  }
+}
+
+/* ─── STARS ─── */
+/* ─── FIELD LINES ─── */
+let fieldLineCache=[],fieldLineDirty=true;
+function invalidateFieldLines(){fieldLineDirty=true;updateSeedDisplay();}
+
+function buildFieldLines(){
+  fieldLineCache=[];
+  const seedN=8;
+  for(const n of S.nodes){
+    const A=ARCHETYPES[n.archIdx];
+    for(let s=0;s<seedN;s++){
+      const angle=(s/seedN)*Math.PI*2;
+      let x=n.x+Math.cos(angle)*20,y=n.y+Math.sin(angle)*20;
+      const path=[[x,y]];
+      for(let step=0;step<80;step++){
+        const f=fieldAt(x,y);
+        const m=Math.hypot(f.x,f.y);
+        if(m<.002) break;
+        x+=f.x/m*6;y+=f.y/m*6;
+        if(x<0||x>W||y<0||y>H) break;
+        path.push([x,y]);
+      }
+      if(path.length>=4) fieldLineCache.push({path,hue:A.hue,sat:A.sat,lit:A.lit});
+    }
+  }
+  fieldLineDirty=false;
+}
+
+function drawFieldLines(){
+  if(!S.nodes.length) return;
+  if(fieldLineDirty) buildFieldLines();
+  cx.save();cx.lineWidth=.55;
+  for(const{path,hue,sat,lit} of fieldLineCache){
+    cx.beginPath();
+    cx.moveTo(path[0][0],path[0][1]);
+    for(let i=1;i<path.length;i++) cx.lineTo(path[i][0],path[i][1]);
+    cx.strokeStyle=`hsla(${hue},${sat}%,${lit}%,.05)`;
+    cx.stroke();
+  }
+  cx.restore();
+}
+
+/* ─── GHOST (permadeath relic) ─── */
+function drawGhost(){
+  if(!S.ghost) return;
+  const g=S.ghost;
+  const A=ARCHETYPES[g.archIdx];
+  const alpha=0.06+0.02*Math.sin(S.frame*.008+g.phase);
+  cx.save();
+  cx.globalAlpha=alpha;
+  cx.beginPath();cx.arc(g.x,g.y,18,0,Math.PI*2);
+  cx.strokeStyle=`hsl(${A.hue},${A.sat}%,${A.lit}%)`;
+  cx.lineWidth=0.5;cx.stroke();
+  cx.beginPath();cx.arc(g.x,g.y,3,0,Math.PI*2);
+  cx.fillStyle=`hsl(${A.hue},${A.sat}%,${A.lit}%)`;cx.fill();
+  cx.restore();
+}
+
+/* ─── NODES (loci) ─── */
+function drawNodes(){
+  for(const n of S.nodes){
+    const A=ARCHETYPES[n.archIdx];
+    const ph=S.frame*.032+n.x*.007;
+    const pulse=.5+.5*Math.sin(ph);
+    const {hue,sat,lit}=A;
+
+    // outer diffuse halo — reduced
+    const glowSizes=[36,16];
+    const glowAlphas=[.025,.06];
+    for(let g=0;g<2;g++){
+      const r=glowSizes[g]*(1+pulse*.08);
+      const gr=cx.createRadialGradient(n.x,n.y,0,n.x,n.y,r);
+      gr.addColorStop(0,`hsla(${hue},${sat}%,${lit}%,${glowAlphas[g]+pulse*.008})`);
+      gr.addColorStop(.5,`hsla(${hue},${sat}%,${lit}%,${glowAlphas[g]*.25})`);
+      gr.addColorStop(1,`hsla(${hue},${sat}%,${lit}%,0)`);
+      cx.beginPath();cx.arc(n.x,n.y,r,0,Math.PI*2);cx.fillStyle=gr;cx.fill();
+    }
+
+    cx.save();cx.translate(n.x,n.y);
+
+    // outer ring — dimmer
+    cx.beginPath();cx.arc(0,0,11+pulse*1.5,0,Math.PI*2);
+    cx.strokeStyle=`hsla(${hue},${sat}%,${lit}%,${.28+pulse*.1})`;
+    cx.lineWidth=1;cx.stroke();
+
+    // core: tight fill
+    cx.beginPath();cx.arc(0,0,4+pulse*.6,0,Math.PI*2);
+    const coreG=cx.createRadialGradient(0,0,0,0,0,4+pulse*.6);
+    coreG.addColorStop(0,`hsla(${hue},${sat*.4}%,98%,.95)`);
+    coreG.addColorStop(.5,`hsla(${hue},${sat}%,${lit}%,.9)`);
+    coreG.addColorStop(1,`hsla(${hue},${sat}%,${lit*.5}%,.5)`);
+    cx.fillStyle=coreG;cx.fill();
+    cx.strokeStyle=`hsla(${hue},${sat}%,${lit}%,.55)`;
+    cx.lineWidth=.7;cx.stroke();
+
+    // archetype mark — use archetype hue, not white
+    cx.strokeStyle=`hsla(${hue},${sat}%,${lit+10}%,${.45+pulse*.2})`;
+    cx.lineWidth=1.0;
+    if(A.id==='q+'){
+      cx.save();cx.rotate(S.frame*.012);
+      for(let i=0;i<4;i++){
+        const a=i/4*Math.PI*2;
+        cx.beginPath();cx.moveTo(Math.cos(a)*5.5,Math.sin(a)*5.5);cx.lineTo(Math.cos(a)*10,Math.sin(a)*10);cx.stroke();
+      }
+      cx.restore();
+    } else if(A.id==='q-'){
+      cx.save();cx.rotate(-S.frame*.012);
+      for(let i=0;i<4;i++){
+        const a=i/4*Math.PI*2+Math.PI/4;
+        cx.beginPath();cx.moveTo(Math.cos(a)*5.5,Math.sin(a)*5.5);cx.lineTo(Math.cos(a)*10,Math.sin(a)*10);cx.stroke();
+      }
+      cx.restore();
+    } else if(A.id==='mn'){
+      cx.save();cx.rotate(S.frame*.018);
+      cx.beginPath();
+      for(let t=0;t<=1;t+=.025){
+        const r=4+t*8,a=t*Math.PI*2;
+        t===0?cx.moveTo(Math.cos(a)*r,Math.sin(a)*r):cx.lineTo(Math.cos(a)*r,Math.sin(a)*r);
+      }
+      cx.stroke();cx.restore();
+    } else if(A.id==='ms'){
+      cx.save();cx.rotate(-S.frame*.018);
+      cx.beginPath();
+      for(let t=0;t<=1;t+=.025){
+        const r=4+t*8,a=-(t*Math.PI*2);
+        t===0?cx.moveTo(Math.cos(a)*r,Math.sin(a)*r):cx.lineTo(Math.cos(a)*r,Math.sin(a)*r);
+      }
+      cx.stroke();cx.restore();
+    } else {
+      cx.beginPath();cx.ellipse(0,0,10,5.5,0,0,Math.PI*2);cx.stroke();
+      cx.save();cx.rotate(S.frame*.024);
+      cx.beginPath();cx.arc(0,-7,2,0,Math.PI*2);
+      cx.fillStyle=`hsla(${hue},${sat}%,${lit+15}%,.85)`;cx.fill();
+      cx.restore();
+    }
+    cx.restore();
+
+    cx.save();
+    cx.font=`${10+pulse*1.5}px sans-serif`;
+    cx.textAlign='center';cx.textBaseline='middle';
+    cx.fillStyle=`hsla(${hue},${sat}%,${lit}%,${.5+pulse*.2})`;
+    cx.fillText(ARCHETYPE_SYMS[n.archIdx],n.x,n.y-22-pulse*2);
+    cx.restore();
+  }
+}
+
+/* ─── HARDLIGHT FILL SYSTEM ─── */
+// Strategy: every N frames, collect all live stroke points into a flat
+// point cloud, then find enclosures by building an adjacency graph of
+// stroke endpoints that are within CLOSE_THRESH of each other.
+// For each closed chain found, compute the actual boundary polygon from
+// the contributing stroke segments. Fill is drawn by:
+//   1. Clipping to the exact polygon path
+//   2. Multi-pass edge-distance fill: sample N interior points, for each
+//      compute distance to nearest edge, use that to drive alpha and hue shift
+//      producing a membrane that is brightest near the boundary and transparent
+//      at the centre — like a soap film or tinted screen stretched over a frame.
+//   3. Regions track identity across frames by stroke-id key so they persist
+//      and move with the physics without blinking.
+
+const HL_CLOSE   = 42;    // px endpoint proximity to close
+const HL_MIN_A   = 2200;  // px² min area
+const HL_MAX_A   = 110000;// px² max area
+const HL_EMERGE  = 55;    // frames to full alpha
+const HL_SCAN_I  = 8;     // scan interval frames
+
+let hlRegions=[];
+let hlScanFrame=0;
+
+// ── geometry helpers ──────────────────────────────────────────────────
+function polyArea(pts){
+  let a=0,n=pts.length;
+  for(let i=0;i<n;i++){const j=(i+1)%n;a+=pts[i].x*pts[j].y-pts[j].x*pts[i].y;}
+  return Math.abs(a)*.5;
+}
+function polyCentroid(pts){
+  let x=0,y=0;for(const p of pts){x+=p.x;y+=p.y;}
+  return{x:x/pts.length,y:y/pts.length};
+}
+// signed area → winding
+function polyWinding(pts){
+  let a=0,n=pts.length;
+  for(let i=0;i<n;i++){const j=(i+1)%n;a+=pts[i].x*pts[j].y-pts[j].x*pts[i].y;}
+  return a;
+}
+// distance from point to line segment
+function ptSegDist(px,py,ax,ay,bx,by){
+  const dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy;
+  if(l2<0.001) return Math.hypot(px-ax,py-ay);
+  const t=Math.max(0,Math.min(1,((px-ax)*dx+(py-ay)*dy)/l2));
+  return Math.hypot(px-(ax+t*dx),py-(ay+t*dy));
+}
+// minimum distance from point to polygon boundary
+function ptPolyBoundaryDist(px,py,pts){
+  let d=Infinity,n=pts.length;
+  for(let i=0;i<n;i++){
+    const j=(i+1)%n;
+    d=Math.min(d,ptSegDist(px,py,pts[i].x,pts[i].y,pts[j].x,pts[j].y));
+  }
+  return d;
+}
+// axis-aligned bounding box
+function polyBBox(pts){
+  let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+  for(const p of pts){x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);x1=Math.max(x1,p.x);y1=Math.max(y1,p.y);}
+  return{x0,y0,x1,y1};
+}
+// point-in-polygon (ray cast)
+function ptInPoly(px,py,pts){
+  let inside=false,n=pts.length;
+  for(let i=0,j=n-1;i<n;j=i++){
+    const xi=pts[i].x,yi=pts[i].y,xj=pts[j].x,yj=pts[j].y;
+    if(((yi>py)!==(yj>py))&&(px<(xj-xi)*(py-yi)/(yj-yi)+xi)) inside=!inside;
+  }
+  return inside;
+}
+
+// ── stroke sampling ───────────────────────────────────────────────────
+function strokeSample(s,n=18){
+  const pts=s.pts;
+  if(pts.length<=n) return pts.map(p=>({x:p.x,y:p.y}));
+  const out=[],step=(pts.length-1)/(n-1);
+  for(let i=0;i<n;i++) out.push({x:pts[Math.round(i*step)].x,y:pts[Math.round(i*step)].y});
+  return out;
+}
+function strokeMeanHue(s){
+  let h=0;for(const p of s.pts)h+=p.hue;return h/s.pts.length;
+}
+function strokeEndpoints(s){
+  const p=s.pts;
+  return{s:{x:p[0].x,y:p[0].y},e:{x:p[p.length-1].x,y:p[p.length-1].y}};
+}
+
+// ── closure detection ─────────────────────────────────────────────────
+// Build endpoint graph: each stroke has a start (s) and end (e).
+// Nodes close within HL_CLOSE are merged. Find short cycles (len 2–4).
+function buildEndpointGraph(strokes){
+  // Each stroke contributes 2 nodes: {sid, role:'s'|'e', x, y}
+  const nodes=[];
+  for(const s of strokes){
+    const ep=strokeEndpoints(s);
+    nodes.push({sid:s.id,role:'s',x:ep.s.x,y:ep.s.y});
+    nodes.push({sid:s.id,role:'e',x:ep.e.x,y:ep.e.y});
+  }
+  // Adjacency: node i → [j,...] if close AND different strokes
+  const adj=nodes.map(()=>[]);
+  for(let i=0;i<nodes.length;i++){
+    for(let j=i+1;j<nodes.length;j++){
+      if(nodes[i].sid===nodes[j].sid) continue; // same stroke
+      const d=Math.hypot(nodes[i].x-nodes[j].x,nodes[i].y-nodes[j].y);
+      if(d<=HL_CLOSE){adj[i].push(j);adj[j].push(i);}
+    }
+  }
+  return{nodes,adj};
+}
+
+// DFS find cycles of length 2..4 in endpoint graph
+// A valid cycle uses each stroke at most once
+function findCycles(nodes,adj,maxLen=4){
+  const cycles=[];
+  const n=nodes.length;
+  function dfs(path,usedStrokes,startNode){
+    const cur=path[path.length-1];
+    for(const nb of adj[cur]){
+      if(path.length>1&&nb===startNode&&path.length>=4){
+        // closed cycle found — collect unique stroke ids
+        const sids=[...new Set(path.map(i=>nodes[i].sid))];
+        if(sids.length>=2) cycles.push([...path]);
+        continue;
+      }
+      if(nb===startNode) continue;
+      if(path.includes(nb)) continue;
+      const sid=nodes[nb].sid;
+      if(usedStrokes.has(sid)) continue;
+      if(path.length>=maxLen) continue;
+      usedStrokes.add(sid);
+      path.push(nb);
+      dfs(path,usedStrokes,startNode);
+      path.pop();
+      usedStrokes.delete(sid);
+    }
+  }
+  // Only start from even-indexed nodes (stroke starts) to reduce duplicates
+  for(let i=0;i<n;i+=2){
+    const usedStrokes=new Set([nodes[i].sid]);
+    dfs([i],usedStrokes,i);
+  }
+  return cycles;
+}
+
+// Convert a cycle of node indices into a polygon by chaining stroke samples
+function cycleToPolygon(cycle,nodes,strokeMap){
+  const poly=[];
+  for(let ci=0;ci<cycle.length;ci++){
+    const ni=nodes[cycle[ci]];
+    const nj=nodes[cycle[(ci+1)%cycle.length]];
+    const s=strokeMap.get(ni.sid);
+    if(!s) continue;
+    const samp=strokeSample(s,16);
+    // Orient sample so it runs from ni's endpoint toward nj's endpoint
+    const distToStart=Math.hypot(samp[0].x-ni.x,samp[0].y-ni.y);
+    const distToEnd=Math.hypot(samp[samp.length-1].x-ni.x,samp[samp.length-1].y-ni.y);
+    const oriented=distToStart<distToEnd?samp:[...samp].reverse();
+    for(const p of oriented) poly.push(p);
+  }
+  return poly;
+}
+
+function dedupeRegions(regions){
+  // Remove near-duplicate regions by centroid proximity + area similarity
+  const out=[];
+  for(const r of regions){
+    const dup=out.some(o=>{
+      const dc=Math.hypot(o.centroid.x-r.centroid.x,o.centroid.y-r.centroid.y);
+      return dc<50&&Math.abs(o.area-r.area)/(r.area+1)<0.35;
+    });
+    if(!dup) out.push(r);
+  }
+  return out;
+}
+
+function scanHardlightRegions(){
+  const strokes=S.strokes;
+  if(strokes.length<2){hlRegions=[];return;}
+  const strokeMap=new Map(strokes.map(s=>[s.id,s]));
+  const{nodes,adj}=buildEndpointGraph(strokes);
+  const cycles=findCycles(nodes,adj,4);
+  if(!cycles.length){hlRegions=[];return;}
+
+  const found=[];
+  for(const cycle of cycles){
+    const poly=cycleToPolygon(cycle,nodes,strokeMap);
+    if(poly.length<4) continue;
+    const area=polyArea(poly);
+    if(area<HL_MIN_A||area>HL_MAX_A) continue;
+    // Ensure CCW winding for consistent fill
+    const oriented=polyWinding(poly)<0?[...poly].reverse():poly;
+    const centroid=polyCentroid(oriented);
+    // Mean hue from all contributing strokes
+    const sids=[...new Set(cycle.map(i=>nodes[i].sid))];
+    const hue=sids.reduce((a,sid)=>{
+      const s=strokeMap.get(sid);return a+(s?strokeMeanHue(s):200);
+    },0)/sids.length;
+    const key=sids.slice().sort((a,b)=>a-b).join('_');
+    found.push({poly:oriented,hue,centroid,area,key});
+  }
+
+  const deduped=dedupeRegions(found);
+  const prevMap=new Map(hlRegions.map(r=>[r.key,r]));
+  hlRegions=deduped.map(r=>{
+    const prev=prevMap.get(r.key);
+    return{...r,age:prev?Math.min(prev.age+1,HL_EMERGE+20):0};
+  });
+}
+
+// ── membrane fill ─────────────────────────────────────────────────────
+// Renders the polygon as a semi-transparent screen/membrane.
+// Technique: draw the filled polygon with the clipping path, then use
+// a multi-stop radial gradient anchored at centroid but with stops tuned
+// so that alpha is highest near the boundary (edge-inward) and falls to
+// nearly zero at centre. No reflections, no specularity — flat tinted screen.
+// A second pass draws the boundary edge itself slightly brighter to give
+// the hard-light wire-frame reinforcement look.
+function drawHardlightFills(){
+  if(!hlRegions.length) return;
+
+  for(const region of hlRegions){
+    const{poly,hue,centroid,area,age}=region;
+    if(poly.length<3) continue;
+    const emerge=Math.min(1,age/HL_EMERGE);
+    if(emerge<0.015) continue;
+
+    // Approximate inradius — distance from centroid to nearest edge
+    const inR=ptPolyBoundaryDist(centroid.x,centroid.y,poly);
+    // Circumradius — distance from centroid to farthest vertex
+    let outR=0;
+    for(const p of poly) outR=Math.max(outR,Math.hypot(p.x-centroid.x,p.y-centroid.y));
+    if(outR<4) continue;
+
+    cx.save();
+
+    // Clip to exact polygon shape
+    cx.beginPath();
+    cx.moveTo(poly[0].x,poly[0].y);
+    for(let i=1;i<poly.length;i++) cx.lineTo(poly[i].x,poly[i].y);
+    cx.closePath();
+    cx.clip();
+
+    // ── Fill pass: semi-transparent screen ──
+    // Radial gradient: centre transparent → edge lit → just outside edge drops
+    // This creates the membrane depth: you see through the middle, the boundary
+    // glows where the "material" thickens toward the frame.
+    const g=cx.createRadialGradient(
+      centroid.x,centroid.y,0,
+      centroid.x,centroid.y,outR*1.05
+    );
+    // Core: near-transparent — you see through the construct
+    g.addColorStop(0,    `hsla(${hue},55%,45%,${0.0*emerge})`);
+    g.addColorStop(0.28, `hsla(${hue},60%,48%,${0.03*emerge})`);
+    g.addColorStop(0.55, `hsla(${hue},68%,54%,${0.07*emerge})`);
+    g.addColorStop(0.78, `hsla(${hue},78%,62%,${0.13*emerge})`);
+    g.addColorStop(0.91, `hsla(${hue},88%,70%,${0.20*emerge})`);
+    g.addColorStop(0.97, `hsla(${hue},95%,78%,${0.26*emerge})`);
+    g.addColorStop(1.0,  `hsla(${hue},100%,85%,${0.10*emerge})`);
+
+    cx.fillStyle=g;
+    cx.beginPath();
+    cx.moveTo(poly[0].x,poly[0].y);
+    for(let i=1;i<poly.length;i++) cx.lineTo(poly[i].x,poly[i].y);
+    cx.closePath();
+    cx.fill();
+
+    // ── Inner edge glow: the hardlight border ──
+    // Stroke the polygon interior with a thin bright line that reinforces
+    // the shape — the "light wire" framing the membrane from inside.
+    cx.strokeStyle=`hsla(${hue},90%,80%,${0.30*emerge})`;
+    cx.lineWidth=1.1;
+    cx.lineJoin='miter';
+    cx.miterLimit=3.5; // sharp vertices
+    cx.beginPath();
+    cx.moveTo(poly[0].x,poly[0].y);
+    for(let i=1;i<poly.length;i++) cx.lineTo(poly[i].x,poly[i].y);
+    cx.closePath();
+    cx.stroke();
+
+    cx.restore();
+
+    // ── Vertex bright points — sharp corners of the construct ──
+    // Placed outside the clip so they sit on top of the wires
+    const bbox=polyBBox(poly);
+    const polySpan=Math.max(bbox.x1-bbox.x0,bbox.y1-bbox.y0);
+    // Find high-curvature vertices: angle between adjacent edges
+    for(let i=0;i<poly.length;i++){
+      const prev=poly[(i-1+poly.length)%poly.length];
+      const cur=poly[i];
+      const next=poly[(i+1)%poly.length];
+      const ax=prev.x-cur.x,ay=prev.y-cur.y;
+      const bx=next.x-cur.x,by=next.y-cur.y;
+      const la=Math.hypot(ax,ay),lb=Math.hypot(bx,by);
+      if(la<2||lb<2) continue;
+      const cos=(ax*bx+ay*by)/(la*lb);
+      // Sharp vertex: angle < 140°, cos > -0.77
+      if(cos>-0.77) continue;
+      cx.beginPath();cx.arc(cur.x,cur.y,2,0,Math.PI*2);
+      cx.fillStyle=`hsla(${hue},100%,95%,${0.55*emerge})`;
+      cx.fill();
+    }
+  }
+}
+
+/* ─── STROKES — original thin filaments ─── */
+function drawStrokes(){
+  for(const s of S.strokes){
+    const pts=s.pts;
+    if(pts.length<2) continue;
+    const restSeg=s.restL/(pts.length-1);
+    const orphanAlpha=s._orphanAlpha!==undefined?s._orphanAlpha:1.0;
+    // smooth: 0→1 over ~200 frames. At 0=full flicker, at 1=steady
+    const smooth=Math.min(1,(s.age||0)/200);
+    // flicker is reduced as smooth increases — construct "locks in"
+    const flickerAmp=0.22*(1-smooth*0.9);
+    const flicker=1-flickerAmp+flickerAmp*Math.sin(S.frame*.31+s.id*1.7);
+    const baseAlpha=orphanAlpha*flicker;
+
+    cx.save();cx.globalAlpha=baseAlpha;
+
+    // PASS 1: glow — brighter and wider as construct ages
+    cx.save();cx.lineCap='round';cx.lineJoin='round';
+    cx.shadowBlur=16+smooth*12;
+    for(let i=1;i<pts.length;i++){
+      const a=pts[i-1],b=pts[i];
+      const mass=(a.mass+b.mass)*.5;
+      const hue=(a.hue+b.hue)*.5;
+      const dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)+.001;
+      const stretch=(d-restSeg)/(restSeg+.001);
+      const L=Math.max(40,Math.min(85,62+stretch*25));
+      cx.shadowColor=`hsla(${hue},80%,${L}%,.4)`;
+      cx.strokeStyle=`hsla(${hue},80%,${L}%,${.07+mass*.06})`;
+      cx.lineWidth=3+mass*9;
+      cx.beginPath();cx.moveTo(a.x,a.y);cx.lineTo(b.x,b.y);cx.stroke();
+    }
+    cx.shadowBlur=0;cx.restore();
+
+    // PASS 2: crisp core filament — gains opacity and saturation with age
+    cx.save();cx.lineCap='round';cx.lineJoin='round';
+    for(let i=1;i<pts.length;i++){
+      const a=pts[i-1],b=pts[i];
+      const mass=(a.mass+b.mass)*.5;
+      const hue=(a.hue+b.hue)*.5;
+      const dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)+.001;
+      const stretch=(d-restSeg)/(restSeg+.001);
+      const L=Math.max(50,Math.min(94,70+stretch*20));
+      const sat=60+mass*30+smooth*15;
+      const coreAlpha=(.6+mass*.3)*(0.65+smooth*0.35);
+      cx.strokeStyle=`hsla(${hue},${sat}%,${L}%,${coreAlpha})`;
+      cx.lineWidth=.5+mass*2.5;
+      cx.beginPath();cx.moveTo(a.x,a.y);cx.lineTo(b.x,b.y);cx.stroke();
+    }
+    cx.restore();
+    cx.restore();
+
+    // PASS 3: charge arc — only visible while still powering up (smooth < 1)
+    if(smooth < 0.98 && pts.length > 1){
+      const mid=pts[Math.floor(pts.length/2)];
+      const chargeAngle=smooth*Math.PI*2;
+      const arcR=4+smooth*6;
+      const arcAlpha=(1-smooth)*0.55*orphanAlpha;
+      cx.save();
+      cx.beginPath();
+      cx.arc(mid.x,mid.y,arcR,-Math.PI/2,-Math.PI/2+chargeAngle);
+      cx.strokeStyle=`hsla(${mid.hue||200},80%,80%,${arcAlpha})`;
+      cx.lineWidth=0.8;cx.lineCap='round';
+      cx.stroke();
+      cx.restore();
+    }
+  }
+}
+
+/* ─── LIVE STROKE ─── */
+function drawLive(){
+  if(S.cur.length<2) return;
+  cx.save();
+  cx.lineCap='round';cx.lineJoin='round';
+  cx.strokeStyle='rgba(160,190,255,.12)';
+  cx.lineWidth=12;
+  cx.beginPath();cx.moveTo(S.cur[0].x,S.cur[0].y);
+  for(const p of S.cur) cx.lineTo(p.x,p.y);
+  cx.stroke();
+  cx.strokeStyle='rgba(200,215,255,.5)';
+  cx.lineWidth=1.2;
+  cx.beginPath();cx.moveTo(S.cur[0].x,S.cur[0].y);
+  for(const p of S.cur) cx.lineTo(p.x,p.y);
+  cx.stroke();
+  cx.restore();
+}
+
+/* ─── SNAP GRID ─── */
+function drawSnapGrid(){
+  if(!S.snapEnabled) return;
+  cx.save();cx.globalAlpha=0.04;
+  cx.strokeStyle='rgba(140,180,255,1)';cx.lineWidth=0.5;
+  for(let x=0;x<W;x+=S.snapGrid){
+    cx.beginPath();cx.moveTo(x,0);cx.lineTo(x,H);cx.stroke();
+  }
+  for(let y=0;y<H;y+=S.snapGrid){
+    cx.beginPath();cx.moveTo(0,y);cx.lineTo(W,y);cx.stroke();
+  }
+  cx.restore();
+}
+
+/* ─── INSTRUMENTS UPDATE ─── */
+let instUpdateFrame=0;
+function updateInstruments(){
+  if(S.frame-instUpdateFrame<18) return;
+  instUpdateFrame=S.frame;
+  const entropy=computeEntropy();
+  document.getElementById('inst-entropy').textContent=entropy.toFixed(3);
+  document.getElementById('inst-strokes').textContent=S.strokes.length;
+  document.getElementById('inst-nodes').textContent=S.nodes.length;
+  document.getElementById('inst-crossings').textContent=totalCrossings;
+  document.getElementById('inst-cadence').textContent=cadenceString()||'—';
+}
+
+/* ─── RENDER ─── */
+function render(){
+  // Trail fade: lighter when constructs are young/many (building phase), heavier when steady
+  const totalAge = S.strokes.reduce((a,s)=>a+(s.age||0),0);
+  const avgAge = S.strokes.length ? totalAge/S.strokes.length : 0;
+  // fade goes from 0.28 (active/young) down to 0.14 (aged/settled)
+  const fadeFill = S.strokes.length ? Math.max(0.13, 0.28 - Math.min(1,avgAge/220)*0.15) : 0.25;
+  cx.fillStyle=`rgba(1,1,8,${fadeFill})`;cx.fillRect(0,0,W,H);
+
+  drawStars();
+  drawSnapGrid();
+  drawFieldLines();
+  drawHardlightFills();
+  drawStrokes();
+  drawLive();
+  drawGhost();
+  drawNodes();
+  updateInstruments();
+}
+
+function loop(){
+  simulate();render();S.frame++;
+  if(S.frame%60===0) updateAudio();
+  requestAnimationFrame(loop);
+}
+
+/* ─── HELPERS ─── */
+let _nodeIdCounter=0;
+function newNodeId(){return ++_nodeIdCounter;}
+function pt(e){const t=e.touches?e.touches[0]:e;return{x:t.clientX,y:t.clientY};}
+function nearNode(x,y,r=22){
+  for(let i=S.nodes.length-1;i>=0;i--)
+    if(Math.hypot(S.nodes[i].x-x,S.nodes[i].y-y)<r) return i;
+  return -1;
+}
+function subsample(pts,maxPts=60){
+  if(pts.length<=maxPts) return pts.map(p=>({...p,vx:0,vy:0}));
+  const out=[],step=(pts.length-1)/(maxPts-1);
+  for(let i=0;i<maxPts;i++) out.push({...pts[Math.round(i*step)],vx:0,vy:0});
+  return out;
+}
+
+let _strokeIdCounter=0;
+function commitStroke(){
+  if(S.cur.length>3){
+    const sub=subsample(S.cur,60);
+    const speeds=[];
+    for(let i=1;i<S.cur.length;i++){
+      const dt=S.curTimes[i]-S.curTimes[i-1]+1;
+      speeds.push(Math.hypot(S.cur[i].x-S.cur[i-1].x,S.cur[i].y-S.cur[i-1].y)/dt);
+    }
+    speeds.unshift(speeds[0]||0);
+    const maxSpd=Math.max(...speeds,.01);
+    const pts=sub.map((p,i)=>{
+      const oi=Math.round(i*(S.cur.length-1)/(sub.length-1));
+      const spd=speeds[Math.min(oi,speeds.length-1)];
+      const rawMass=1-(spd/maxSpd)*.85;
+      const mass=S.pressureMode==='invert'?1-rawMass:rawMass;
+      const f=fieldAt(p.x,p.y);
+      const hue=((f.hueShift%360)+360)%360||200;
+      return{...p,mass,hue,vx:0,vy:0,_prevFieldDot:0};
+    });
+    let L=0;
+    for(let i=1;i<pts.length;i++) L+=Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y);
+    const sid=++_strokeIdCounter;
+    S.strokes.push({pts,restL:L,id:sid,_nodeSnapshot:null,_orphanAlpha:1,age:0});
+    S.strokeStarts.push(performance.now());
+    if(S.strokeStarts.length>32) S.strokeStarts.shift();
+  }
+  S.cur=[];S.curTimes=[];S.drawing=false;
+}
+
+/* ─── PLACE OR CYCLE LOCUS ─── */
+function placeOrCycleNode(x,y){
+  const sp=snapPt(x,y);
+  const idx=nearNode(sp.x,sp.y,30);
+  if(idx>=0){
+    S.nodes[idx].archIdx=(S.nodes[idx].archIdx+1)%ARCHETYPES.length;
+  } else {
+    S.nodes.push({x:sp.x,y:sp.y,archIdx:0,str:140,phase:Math.random()*Math.PI*2,_id:newNodeId()});
+  }
+  invalidateFieldLines();
+  if(S.automationRecording){
+    S.automationRecord.push({t:performance.now()-S.automationStartT,x:sp.x,y:sp.y,archIdx:idx>=0?S.nodes[idx].archIdx:0,str:140});
+  }
+}
+
+/* ─── PERMADEATH ─── */
+function clearAll(){
+  if(S.nodes.length>0){
+    const cx_=S.nodes.reduce((a,n)=>a+n.x,0)/S.nodes.length;
+    const cy_=S.nodes.reduce((a,n)=>a+n.y,0)/S.nodes.length;
+    const counts=new Array(ARCHETYPES.length).fill(0);
+    for(const n of S.nodes) counts[n.archIdx]++;
+    const archIdx=counts.indexOf(Math.max(...counts));
+    S.ghost={x:cx_,y:cy_,archIdx,phase:Math.random()*Math.PI*2};
+  }
+  S.strokes=[];S.nodes=[];hlRegions=[];invalidateFieldLines();
+}
+function clearStrokes(){S.strokes=[];hlRegions=[];}
+
+/* ─── TOAST ─── */
+let toastTimer=null;
+function showToast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg;el.style.opacity='1';
+  clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.style.opacity='0',2000);
+}
+
+/* ─── EUCLIDEAN LOCUS PLACEMENT ─── */
+function euclideanNodes(n,archIdx,cx_,cy_,radius){
+  for(let i=0;i<n;i++){
+    const angle=(i/n)*Math.PI*2;
+    const x=cx_+Math.cos(angle)*radius;
+    const y=cy_+Math.sin(angle)*radius;
+    S.nodes.push({x,y,archIdx,str:140,phase:Math.random()*Math.PI*2,_id:newNodeId()});
+  }
+  invalidateFieldLines();
+}
+
+/* ─── REPL ─── */
+function replExec(cmd){
+  const parts=cmd.trim().split(/\s+/);
+  const verb=parts[0].toLowerCase();
+  if(verb==='locus'||verb==='node'||verb==='n'){
+    const x=parseFloat(parts[1]),y=parseFloat(parts[2]);
+    const archRaw=parts[3]||'q+';
+    const archIdx=ARCH_NAMES.indexOf(archRaw.toLowerCase());
+    if(isNaN(x)||isNaN(y)) return 'error: locus x y archetype [strength]';
+    const str=parseFloat(parts[4])||140;
+    S.nodes.push({x,y,archIdx:Math.max(0,archIdx),str,phase:Math.random()*Math.PI*2,_id:newNodeId()});
+    invalidateFieldLines();
+    return `locus placed (${x},${y}) ${ARCH_NAMES[Math.max(0,archIdx)]}`;
+  }
+  if(verb==='euc'||verb==='euclidean'){
+    const count=parseInt(parts[1])||5;
+    const archRaw=parts[2]||'q+';
+    const archIdx=Math.max(0,ARCH_NAMES.indexOf(archRaw.toLowerCase()));
+    const ecx=parseFloat(parts[3])||W/2;
+    const ecy=parseFloat(parts[4])||H/2;
+    const erad=parseFloat(parts[5])||120;
+    euclideanNodes(count,archIdx,ecx,ecy,erad);
+    return `euclidean: ${count}× ${ARCH_NAMES[archIdx]} at (${ecx},${ecy}) r=${erad}`;
+  }
+  if(verb==='clear'){
+    if(parts[1]==='loci'||parts[1]==='nodes'){S.nodes=[];invalidateFieldLines();return 'loci cleared';}
+    if(parts[1]==='constructs'||parts[1]==='strokes'){clearStrokes();return 'constructs cleared';}
+    clearAll();return 'cleared';
+  }
+  if(verb==='pressure'){
+    S.pressureMode=parts[1]==='slow'?'invert':'default';
+    return `pressure mode: ${S.pressureMode}`;
+  }
+  if(verb==='snap'){
+    S.snapEnabled=parts[1]!=='off';
+    if(parts[2]) S.snapGrid=parseInt(parts[2])||40;
+    return `snap: ${S.snapEnabled?'on grid='+S.snapGrid:'off'}`;
+  }
+  if(verb==='cipher'||verb==='seed'){
+    if(parts[1]){
+      const ok=seedToState(parts[1]);
+      return ok?'cipher loaded':'invalid cipher';
+    }
+    return stateToSeed()||'no loci';
+  }
+  if(verb==='rec'||verb==='record'){
+    S.automationRecording=!S.automationRecording;
+    if(S.automationRecording){S.automationRecord=[];S.automationStartT=performance.now();}
+    return `recording: ${S.automationRecording?'started':'stopped ('+S.automationRecord.length+' events)'}`;
+  }
+  if(verb==='play'||verb==='replay'){
+    if(!S.automationRecord.length) return 'no sequence recorded';
+    const rec=[...S.automationRecord];
+    S.nodes=[];invalidateFieldLines();
+    for(const evt of rec){
+      setTimeout(()=>{
+        S.nodes.push({x:evt.x,y:evt.y,archIdx:evt.archIdx,str:evt.str,phase:Math.random()*Math.PI*2,_id:newNodeId()});
+        invalidateFieldLines();
+      },evt.t);
+    }
+    return `replaying ${rec.length} events`;
+  }
+  if(verb==='coherence'||verb==='entropy') return computeEntropy().toFixed(4);
+  if(verb==='glyph'||verb==='cadence') return cadenceString()||'—';
+  if(verb==='help') return 'locus x y arch [str] | euc n arch [cx cy r] | clear [loci|constructs] | pressure fast|slow | snap on|off [grid] | cipher [code] | rec | play | coherence | glyph';
+  return `unknown: ${verb}`;
+}
+
+function replLog(text,isOut){
+  const log=document.getElementById('repl-log');
+  const line=document.createElement('div');
+  line.style.color=isOut?'rgba(160,200,255,.5)':'rgba(200,220,255,.7)';
+  line.textContent=text;
+  log.appendChild(line);
+  log.scrollTop=log.scrollHeight;
+}
+
+/* ─── PNG EXPORT ─── */
+function exportPNG(){
+  const oc=document.createElement('canvas');
+  oc.width=cv.width;oc.height=cv.height;
+  const ox=oc.getContext('2d');
+  ox.drawImage(cv,0,0);
+  const url=oc.toDataURL('image/png');
+  const a=document.createElement('a');
+  a.href=url;a.download=`retrotube_${Date.now()}.png`;a.click();
+}
+
+/* ─── SESSION JSON ─── */
+function exportSession(){
+  const session={
+    version:3,
+    timestamp:new Date().toISOString(),
+    cipher:stateToSeed(),
+    coherence:computeEntropy(),
+    glyphFingerprint:cadenceString(),
+    loci:S.nodes.map(n=>({x:n.x,y:n.y,archIdx:n.archIdx,str:n.str})),
+    constructCount:S.strokes.length,
+    totalTransits:totalCrossings,
+    automationRecord:S.automationRecord,
+    pressureMode:S.pressureMode,
+    snapEnabled:S.snapEnabled,
+    snapGrid:S.snapGrid,
+  };
+  const blob=new Blob([JSON.stringify(session,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`retrotube_session_${Date.now()}.json`;a.click();
+}
+
+/* ─── TRANSIT LOG EXPORT ─── */
+function exportTelemetry(){
+  const blob=new Blob([JSON.stringify(TELEMETRY,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`retrotube_transits_${Date.now()}.json`;a.click();
+}
+
+/* ─── EXPORT PANEL ─── */
+function openExportPanel(){
+  const panel=document.getElementById('export-overlay');
+  panel.classList.add('open');
+  document.getElementById('export-stats').innerHTML=
+    `coherence <span style="color:rgba(180,210,255,.7)">${computeEntropy().toFixed(3)}</span><br>`+
+    `constructs <span style="color:rgba(180,210,255,.7)">${S.strokes.length}</span> &nbsp; loci <span style="color:rgba(180,210,255,.7)">${S.nodes.length}</span><br>`+
+    `transits <span style="color:rgba(180,210,255,.7)">${totalCrossings}</span><br>`+
+    `glyph <span style="color:rgba(180,210,255,.7)">${cadenceString()||'—'}</span>`;
+  const tl=document.getElementById('telemetry-list');
+  tl.innerHTML=TELEMETRY.slice(-20).reverse().map(e=>
+    `<div>t=${e.t} (${e.x},${e.y}) ${e.archetype}</div>`
+  ).join('');
+}
+
+/* ─── CIPHER PANEL ─── */
+function openSeedPanel(){
+  updateSeedDisplay();
+  document.getElementById('seed-overlay').classList.add('open');
+  document.getElementById('seed-input').value='';
+  document.getElementById('seed-input').focus();
+}
+
+/* ─── MOUSE ─── */
+cv.addEventListener('mousedown',e=>{
+  if(e.button!==0) return;
+  initAudio();
+  S.drawing=true;const p=pt(e);S.cur=[p];S.curTimes=[performance.now()];
+  document.getElementById('hint').style.opacity='0';
+});
+cv.addEventListener('mousemove',e=>{
+  if(!S.drawing) return;
+  const p=pt(e),l=S.cur[S.cur.length-1];
+  if(Math.hypot(p.x-l.x,p.y-l.y)>4){S.cur.push(p);S.curTimes.push(performance.now());}
+});
+cv.addEventListener('mouseup',e=>{if(e.button===0)commitStroke();});
+cv.addEventListener('mouseleave',()=>{if(S.drawing)commitStroke();});
+cv.addEventListener('contextmenu',e=>{
+  e.preventDefault();const p=pt(e);
+  const sp=snapPt(p.x,p.y);
+  const idx=nearNode(sp.x,sp.y);
+  if(idx>=0){S.nodes[idx].archIdx=(S.nodes[idx].archIdx+1)%ARCHETYPES.length;}
+  else{S.nodes.push({x:sp.x,y:sp.y,archIdx:0,str:140,phase:Math.random()*Math.PI*2,_id:newNodeId()});}
+  invalidateFieldLines();
+});
+cv.addEventListener('dblclick',e=>{
+  const p=pt(e),idx=nearNode(p.x,p.y,28);
+  if(idx>=0){S.nodes.splice(idx,1);invalidateFieldLines();}
+  else{clearStrokes();showToast('·');}
+});
+
+/* ─── LONG-PRESS / TOUCH ─── */
+const LONG_MS=480;
+let lpTimer=null,lpX=0,lpY=0,lpFired=false;
+const ring=document.getElementById('longpress-ring');
+function startLongPress(x,y){
+  lpX=x;lpY=y;lpFired=false;
+  ring.style.left=x+'px';ring.style.top=y+'px';
+  ring.style.transition='none';ring.style.transform='translate(-50%,-50%) scale(0)';ring.style.opacity='.88';
+  ring.getBoundingClientRect();
+  ring.style.transition='transform .5s cubic-bezier(.15,.8,.35,1),opacity .5s';
+  ring.style.transform='translate(-50%,-50%) scale(1)';
+  lpTimer=setTimeout(()=>{lpFired=true;ring.style.opacity='0';placeOrCycleNode(lpX,lpY);},LONG_MS);
+}
+function cancelLongPress(){
+  clearTimeout(lpTimer);lpTimer=null;
+  ring.style.opacity='0';ring.style.transform='translate(-50%,-50%) scale(0)';
+}
+let lastTap=0,lastTapX=0,lastTapY=0;
+const DBL_MS=300,DBL_DIST=32;
+cv.addEventListener('touchstart',e=>{
+  e.preventDefault();initAudio();document.getElementById('hint').style.opacity='0';
+  if(e.touches.length===2){
+    cancelLongPress();if(S.drawing)commitStroke();
+    const mx=(e.touches[0].clientX+e.touches[1].clientX)/2;
+    const my=(e.touches[0].clientY+e.touches[1].clientY)/2;
+    placeOrCycleNode(mx,my);return;
+  }
+  if(e.touches.length>1) return;
+  const p=pt(e),now=performance.now();
+  const dTap=now-lastTap,dDist=Math.hypot(p.x-lastTapX,p.y-lastTapY);
+  if(dTap<DBL_MS&&dDist<DBL_DIST){
+    cancelLongPress();
+    const idx=nearNode(p.x,p.y,34);
+    if(idx>=0){S.nodes.splice(idx,1);invalidateFieldLines();}
+    else{clearStrokes();showToast('·');}
+    lastTap=0;return;
+  }
+  lastTap=now;lastTapX=p.x;lastTapY=p.y;
+  S.drawing=true;S.cur=[p];S.curTimes=[now];startLongPress(p.x,p.y);
+},{passive:false});
+cv.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  if(e.touches.length>1){cancelLongPress();return;}
+  if(!S.drawing) return;
+  const p=pt(e),l=S.cur[S.cur.length-1];
+  const moved=Math.hypot(p.x-l.x,p.y-l.y);
+  if(moved>10) cancelLongPress();
+  if(moved>4){S.cur.push(p);S.curTimes.push(performance.now());}
+},{passive:false});
+cv.addEventListener('touchend',e=>{
+  e.preventDefault();cancelLongPress();
+  if(!lpFired)commitStroke();else{S.cur=[];S.curTimes=[];S.drawing=false;}
+},{passive:false});
+cv.addEventListener('touchcancel',()=>{cancelLongPress();S.cur=[];S.curTimes=[];S.drawing=false;});
+
+/* ─── KEYBOARD ─── */
+window.addEventListener('keydown',e=>{
+  if(e.key==='`'||e.key==='~'){
+    e.preventDefault();
+    const repl=document.getElementById('repl-overlay');
+    const open=repl.classList.toggle('open');
+    if(open) document.getElementById('repl-input').focus();
+    return;
+  }
+  if(e.key==='\\'||e.key==='|'){
+    e.preventDefault();openSeedPanel();return;
+  }
+  if(e.key==='Tab'){
+    e.preventDefault();
+    const panel=document.getElementById('export-overlay');
+    if(panel.classList.contains('open')) panel.classList.remove('open');
+    else openExportPanel();
+    return;
+  }
+  const anyOpen=document.getElementById('repl-overlay').classList.contains('open')||
+                 document.getElementById('seed-overlay').classList.contains('open')||
+                 document.getElementById('export-overlay').classList.contains('open');
+  if(anyOpen) return;
+
+  if(e.key===' '){clearStrokes();showToast('·');}
+  if(e.key==='Backspace'||e.key==='Delete'){S.nodes=[];invalidateFieldLines();}
+  if(e.key==='Escape'){clearAll();}
+  if(e.key==='e'||e.key==='E'){
+    euclideanNodes(5,0,W/2,H/2,Math.min(W,H)*0.22);
+    showToast('euclidean 5×');
+  }
+  if(e.key==='p'||e.key==='P'){
+    S.pressureMode=S.pressureMode==='default'?'invert':'default';
+    showToast('pressure: '+(S.pressureMode==='invert'?'fast=heavy':'fast=light'));
+  }
+  if(e.key==='g'||e.key==='G'){
+    S.snapEnabled=!S.snapEnabled;
+    showToast('snap: '+(S.snapEnabled?'on':'off'));
+  }
+  if(e.key==='x'||e.key==='X'){exportPNG();showToast('png saved');}
+  if(e.key==='i'||e.key==='I'){toggleInstruments();}
+  if(e.key==='m'||e.key==='M'){
+    if(audioCtx&&droneGain){
+      const t=audioCtx.currentTime;
+      const muted=droneGain.gain.value<0.01;
+      droneGain.gain.linearRampToValueAtTime(muted?0.65*computeEntropy():0,t+0.4);
+      droneGain2.gain.linearRampToValueAtTime(muted?0.26*computeEntropy():0,t+0.4);
+      showToast(muted?'tone on':'tone off');
+    }
+  }
+});
+
+/* ─── REPL INPUT ─── */
+document.getElementById('repl-input').addEventListener('keydown',e=>{
+  if(e.key==='Enter'){
+    const val=e.target.value.trim();
+    if(val){
+      replLog('> '+val,false);
+      const result=replExec(val);
+      replLog(result,true);
+      e.target.value='';
+    }
+  }
+  if(e.key==='Escape') document.getElementById('repl-overlay').classList.remove('open');
+});
+
+/* ─── CIPHER INPUT ─── */
+document.getElementById('seed-input').addEventListener('keydown',e=>{
+  if(e.key==='Enter'){
+    const val=e.target.value.trim();
+    if(val){
+      const ok=seedToState(val);
+      showToast(ok?'cipher loaded':'invalid cipher');
+      if(ok) document.getElementById('seed-overlay').classList.remove('open');
+    }
+  }
+  if(e.key==='Escape') document.getElementById('seed-overlay').classList.remove('open');
+});
+document.getElementById('seed-close').addEventListener('click',()=>{
+  document.getElementById('seed-overlay').classList.remove('open');
+});
+
+/* ─── EXPORT BUTTONS ─── */
+document.getElementById('export-close').addEventListener('click',()=>{
+  document.getElementById('export-overlay').classList.remove('open');
+});
+document.getElementById('btn-png').addEventListener('click',()=>{exportPNG();showToast('png saved');});
+document.getElementById('btn-session').addEventListener('click',exportSession);
+document.getElementById('btn-telemetry').addEventListener('click',exportTelemetry);
+
+/* ─── INSTRUMENTS TOGGLE ─── */
+let instVisible=true;
+function toggleInstruments(){
+  instVisible=!instVisible;
+  document.getElementById('instruments').classList.toggle('hidden',!instVisible);
+  document.getElementById('inst-toggle').textContent=instVisible?'inst ◈':'inst ◇';
+}
+document.getElementById('inst-toggle').addEventListener('click',toggleInstruments);
+
+/* ─── FULLSCREEN ─── */
+document.getElementById('fs-btn').addEventListener('click',()=>{
+  if(!document.fullscreenElement){
+    document.documentElement.requestFullscreen().catch(()=>{});
+  } else {
+    document.exitFullscreen().catch(()=>{});
+  }
+});
+
+resize();initSky();loop();
+</script>
+</body>
+</html>
