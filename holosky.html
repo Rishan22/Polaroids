@@ -454,11 +454,7 @@ function drawStars(){
 // The celestial sphere — viewed from inside — is "The Hollow Earth":
 // an astral sphere surrounding Earth, and users occupy positions on its
 // inner surface. When connected browser-to-browser (future), each user's
-// RA/Dec patch tiles into a shared spherical map. The coordinate system is
-// already real: skyLat/skyLon → LST → Alt/Az → screen. The P2P layer
-// simply needs to exchange {lat,lon,stars[],constructs[]} and stitch patches
-// by converting each peer's alt/az back to RA/Dec, then re-projecting into
-// the local observer's frame. Seam blending: haversine distance weighting.
+// RA/Dec patch tiles into a shared spherical map.
 function initSky(){
   if(navigator.geolocation){
     navigator.geolocation.getCurrentPosition(pos=>{
