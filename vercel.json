@@ -1,7 +1,5 @@
 {
-
   "routes": [
-    { "src": "/store", "dest": "/api/store.js" },
     { "src": "/", "dest": "/index.html" }
   ]
 }
