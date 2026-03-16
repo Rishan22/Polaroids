@@ -1,8 +1,8 @@
 {
-  "name": "Polaroids",
+  "name": "polaroids",
   "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "@vercel/kv": "^1.0.0"
+      "@upstash/redis": "^1.28.0"
   }
 }
